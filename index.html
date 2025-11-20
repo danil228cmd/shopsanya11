@@ -501,88 +501,37 @@
         // Загрузка данных
         async function loadData() {
             try {
-                // Пробуем загрузить с Beeceptor API
-                const API_URL = 'https://cqwrvqrweb.free.beeceptor.com';
+                // Пробуем несколько вариантов API
+                const API_URLS = [
+                    'http://localhost:8080',  // Локальный сервер
+                    'https://ваш-ник.github.io/ваш-репозиторий/api'  // GitHub Pages (если настроите CORS)
+                ];
                 
-                console.log('🔄 Пробуем загрузить данные с API...');
-                const [productsRes, categoriesRes] = await Promise.all([
-                    fetch(`${API_URL}/api/products`),
-                    fetch(`${API_URL}/api/categories`)
-                ]);
+                let productsRes, categoriesRes;
+                
+                // Пробуем первый URL (локальный)
+                try {
+                    productsRes = await fetch(`${API_URLS[0]}/api/products`);
+                    categoriesRes = await fetch(`${API_URLS[0]}/api/categories`);
+                } catch {
+                    // Если локальный не работает, пробуем второй
+                    productsRes = await fetch(`${API_URLS[1]}/api/products`);
+                    categoriesRes = await fetch(`${API_URLS[1]}/api/categories`);
+                }
                 
                 if (productsRes.ok && categoriesRes.ok) {
                     products = await productsRes.json();
                     categories = await categoriesRes.json();
-                    console.log('✅ Данные загружены с API');
+                    console.log('✅ Данные загружены');
                 } else {
                     throw new Error('API не отвечает');
                 }
                 
             } catch (error) {
-                console.log('⚠️ Используем локальные данные');
-                // Локальные данные на случай если API недоступно
-                products = [
-                    {
-                        id: 1,
-                        name: "Nike Air Force 1",
-                        description: "Классические кроссовки белого цвета",
-                        price: 12990,
-                        category_id: 1,
-                        photo_url: null,
-                        in_stock: true
-                    },
-                    {
-                        id: 2,
-                        name: "Adidas Ultraboost", 
-                        description: "Беговые кроссовки с технологией Boost",
-                        price: 15990,
-                        category_id: 1,
-                        photo_url: null,
-                        in_stock: true
-                    },
-                    {
-                        id: 3,
-                        name: "Puma RS-X",
-                        description: "Стильные кроссовки в ретро-стиле",
-                        price: 8990, 
-                        category_id: 1,
-                        photo_url: null,
-                        in_stock: true
-                    },
-                    {
-                        id: 4,
-                        name: "Футболка Basic",
-                        description: "Хлопковая футболка черного цвета",
-                        price: 1990,
-                        category_id: 2,
-                        photo_url: null,
-                        in_stock: true
-                    },
-                    {
-                        id: 5,
-                        name: "Джинсы Slim Fit",
-                        description: "Синие джинсы облегающего кроя",
-                        price: 4990,
-                        category_id: 2,
-                        photo_url: null,
-                        in_stock: true
-                    },
-                    {
-                        id: 6,
-                        name: "Бейсболка Nike",
-                        description: "Черная бейсболка с логотипом",
-                        price: 2490,
-                        category_id: 3,
-                        photo_url: null,
-                        in_stock: true
-                    }
-                ];
-                
-                categories = [
-                    {id: 1, name: "Обувь", parent_id: null},
-                    {id: 2, name: "Одежда", parent_id: null},
-                    {id: 3, name: "Аксессуары", parent_id: null}
-                ];
+                console.error('❌ Ошибка загрузки:', error);
+                document.getElementById('productsGrid').innerHTML = 
+                    '<div class="empty-message">Ошибка загрузки товаров. Убедитесь что бот запущен.</div>';
+                return;
             }
             
             renderCategories();
@@ -876,3 +825,4 @@
     </script>
 </body>
 </html>
+
