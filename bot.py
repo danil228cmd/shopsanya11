@@ -141,7 +141,7 @@ class Database:
                 json.dump(categories, f, ensure_ascii=False, indent=2)
             
             logger.info("✅ Данные экспортированы в JSON")
-            push_to_github()
+            '''push_to_github()'''
             return True
             
         except Exception as e:
@@ -963,7 +963,7 @@ async def main():
         await on_shutdown()
 import subprocess
 import os
-
+'''
 def push_to_github():
     """Автоматически пушит изменения на GitHub"""
     try:
@@ -978,3 +978,4 @@ def push_to_github():
     except Exception as e:
         logger.error(f"❌ Ошибка пуша на GitHub: {e}")
         return False
+'''
