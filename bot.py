@@ -967,15 +967,10 @@ import os
 def push_to_github():
     """Автоматически пушит изменения на GitHub"""
     try:
-        # Переходим в папку проекта
         os.chdir(os.path.dirname(os.path.abspath(__file__)))
         
-        # Сначала пулим чтобы избежать конфликтов
-        subprocess.run(['git', 'pull', 'origin', 'master', '--allow-unrelated-histories'], check=True, capture_output=True)
-        
-        # Затем добавляем и коммитим
         subprocess.run(['git', 'add', 'api/'], check=True)
-        subprocess.run(['git', 'commit', '-m', 'Auto-update: ' + datetime.now().strftime('%Y-%m-%d %H:%M:%S')], check=True)
+        subprocess.run(['git', 'commit', '-m', 'Auto-update products'], check=True)
         subprocess.run(['git', 'push', 'origin', 'master'], check=True)
         
         logger.info("✅ Изменения запушены на GitHub")
