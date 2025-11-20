@@ -1,5 +1,13 @@
 [
   {
+    "id": 3,
+    "name": "йцккмйцк",
+    "description": "йцмкйцкмй",
+    "price": 31241.0,
+    "category_id": 2,
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/AgACAgIAAxkBAAOYaR8pB1stupsI9yHPQnfy5Xx9b6YAAlsMaxs8rAFJsmIuh9_1rk8BAAMCAAN5AAM2BA"
+  },
+  {
     "id": 2,
     "name": "ПИДОРАС",
     "description": "ЙЦСКЙЦКС",
