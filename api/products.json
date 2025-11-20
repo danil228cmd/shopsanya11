@@ -1,5 +1,13 @@
 [
   {
+    "id": 8,
+    "name": "йсцкйцкс",
+    "description": "уннуиун",
+    "price": 616.0,
+    "category_id": 2,
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_8.jpg"
+  },
+  {
     "id": 7,
     "name": "спочатку",
     "description": "вид",
