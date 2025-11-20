@@ -1,11 +1,19 @@
 [
   {
+    "id": 7,
+    "name": "спочатку",
+    "description": "вид",
+    "price": 12.0,
+    "category_id": 2,
+    "photo_url": null
+  },
+  {
     "id": 6,
     "name": "Сперматозойд собачий",
     "description": "цкмйцмкйц",
     "price": 61.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/AgACAgIAAxkBAAO-aR8uM8RVKF4dLoj56wZVdoqjK50AAo0Maxs8rAFJOlbnRTPlEXABAAMCAAN5AAM2BA"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_7.jpg"
   },
   {
     "id": 5,
@@ -29,7 +37,7 @@
     "description": "йцмкйцкмй",
     "price": 31241.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/AgACAgIAAxkBAAOYaR8pB1stupsI9yHPQnfy5Xx9b6YAAlsMaxs8rAFJsmIuh9_1rk8BAAMCAAN5AAM2BA"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_6.jpg"
   },
   {
     "id": 2,
@@ -37,7 +45,7 @@
     "description": "ЙЦСКЙЦКС",
     "price": 4141515.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/AgACAgIAAxkBAAOKaR8oQBoCf8NNUdMfRHkCkguD1YgAAlkMaxs8rAFJNl1lRQPHPdoBAAMCAAN4AAM2BA"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_5.jpg"
   },
   {
     "id": 1,
@@ -45,6 +53,6 @@
     "description": "Дешевая блядота",
     "price": 2141.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/AgACAgIAAxkBAAN-aR8nw39LMqbWRrVlIhLnYdUxLeEAAlMMaxs8rAFJHlbo1r7on50BAAMCAAN5AAM2BA"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_4.jpg"
   }
 ]
