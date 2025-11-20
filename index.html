@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>🛍 Мой Магазин</title>
+    <title>Магазин</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * {
@@ -20,11 +20,6 @@
             overflow-x: hidden;
         }
 
-        /* Скрываем домен Telegram */
-        .tg-head {
-            display: none !important;
-        }
-
         /* Хедер */
         .header {
             position: sticky;
@@ -33,16 +28,6 @@
             border-bottom: 1px solid var(--tg-theme-hint-color, #e0e0e0);
             z-index: 100;
             padding: 10px 15px;
-        }
-
-        /* Заголовок магазина */
-        .shop-title {
-            text-align: center;
-            font-weight: bold;
-            font-size: 18px;
-            padding: 10px;
-            background: var(--tg-theme-bg-color, #fff);
-            border-bottom: 1px solid var(--tg-theme-hint-color, #e0e0e0);
         }
 
         /* Поиск */
@@ -434,9 +419,6 @@
     </style>
 </head>
 <body>
-    <!-- Заголовок магазина -->
-    <div class="shop-title">🛍 Мой Магазин</div>
-
     <!-- Хедер -->
     <div class="header">
         <!-- Поиск -->
@@ -519,10 +501,10 @@
         // Загрузка данных
         async function loadData() {
             try {
-                // Используем локальный сервер бота
-                const API_URL = 'http://localhost:8080';
+                // Пробуем загрузить с Beeceptor API
+                const API_URL = 'https://cqwrvqrweb.free.beeceptor.com';
                 
-                console.log('🔄 Загружаем данные с локального сервера...');
+                console.log('🔄 Пробуем загрузить данные с API...');
                 const [productsRes, categoriesRes] = await Promise.all([
                     fetch(`${API_URL}/api/products`),
                     fetch(`${API_URL}/api/categories`)
@@ -531,16 +513,76 @@
                 if (productsRes.ok && categoriesRes.ok) {
                     products = await productsRes.json();
                     categories = await categoriesRes.json();
-                    console.log('✅ Данные загружены с локального сервера');
+                    console.log('✅ Данные загружены с API');
                 } else {
-                    throw new Error('Локальный сервер не отвечает');
+                    throw new Error('API не отвечает');
                 }
                 
             } catch (error) {
-                console.error('❌ Ошибка загрузки:', error);
-                document.getElementById('productsGrid').innerHTML = 
-                    '<div class="empty-message">Ошибка загрузки товаров. Убедитесь что бот запущен.</div>';
-                return;
+                console.log('⚠️ Используем локальные данные');
+                // Локальные данные на случай если API недоступно
+                products = [
+                    {
+                        id: 1,
+                        name: "Nike Air Force 1",
+                        description: "Классические кроссовки белого цвета",
+                        price: 12990,
+                        category_id: 1,
+                        photo_url: null,
+                        in_stock: true
+                    },
+                    {
+                        id: 2,
+                        name: "Adidas Ultraboost", 
+                        description: "Беговые кроссовки с технологией Boost",
+                        price: 15990,
+                        category_id: 1,
+                        photo_url: null,
+                        in_stock: true
+                    },
+                    {
+                        id: 3,
+                        name: "Puma RS-X",
+                        description: "Стильные кроссовки в ретро-стиле",
+                        price: 8990, 
+                        category_id: 1,
+                        photo_url: null,
+                        in_stock: true
+                    },
+                    {
+                        id: 4,
+                        name: "Футболка Basic",
+                        description: "Хлопковая футболка черного цвета",
+                        price: 1990,
+                        category_id: 2,
+                        photo_url: null,
+                        in_stock: true
+                    },
+                    {
+                        id: 5,
+                        name: "Джинсы Slim Fit",
+                        description: "Синие джинсы облегающего кроя",
+                        price: 4990,
+                        category_id: 2,
+                        photo_url: null,
+                        in_stock: true
+                    },
+                    {
+                        id: 6,
+                        name: "Бейсболка Nike",
+                        description: "Черная бейсболка с логотипом",
+                        price: 2490,
+                        category_id: 3,
+                        photo_url: null,
+                        in_stock: true
+                    }
+                ];
+                
+                categories = [
+                    {id: 1, name: "Обувь", parent_id: null},
+                    {id: 2, name: "Одежда", parent_id: null},
+                    {id: 3, name: "Аксессуары", parent_id: null}
+                ];
             }
             
             renderCategories();
@@ -564,10 +606,9 @@
 
         // Фильтр по категории
         function filterByCategory(categoryId) {
-            // Обновляем активную кнопку
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.classList.remove('active');
-                if (btn.dataset.category == categoryId) {
+                if (btn.dataset.category == categoryId || (categoryId === 'all' && btn.dataset.category === 'all')) {
                     btn.classList.add('active');
                 }
             });
