@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import subprocess
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.filters import CommandStart
 from aiogram.types import (
@@ -14,7 +15,7 @@ import sqlite3
 from typing import List, Optional, Tuple
 import json
 from datetime import datetime
-from datetime import datetime
+
 # Загрузка переменных окружения
 def load_env():
     if os.path.exists('.env'):
@@ -30,7 +31,7 @@ load_env()
 # Настройки
 TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://your-domain.com")  # URL твоего Mini App
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://your-domain.com")
 
 # Настройка логирования
 logging.basicConfig(
@@ -44,6 +45,21 @@ bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
+
+def push_to_github():
+    """Автоматически пушит изменения на GitHub"""
+    try:
+        os.chdir(os.path.dirname(os.path.abspath(__file__)))
+        
+        subprocess.run(['git', 'add', 'api/'], check=True)
+        subprocess.run(['git', 'commit', '-m', 'Auto-update: ' + datetime.now().strftime('%Y-%m-%d %H:%M:%S')], check=True)
+        subprocess.run(['git', 'push', 'origin', 'master'], check=True)
+        
+        logger.info("✅ Изменения запушены на GitHub")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка пуша на GitHub: {e}")
+        return False
 
 # ==================== БАЗА ДАННЫХ ====================
 class Database:
@@ -61,7 +77,6 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Таблица категорий (вложенные)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,7 +87,6 @@ class Database:
             )
         ''')
         
-        # Таблица товаров
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS products (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,7 +101,6 @@ class Database:
             )
         ''')
         
-        # Таблица заказов
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,10 +117,9 @@ class Database:
         conn.close()
         logger.info("✅ База данных инициализирована")
     
-    def export_to_json(self):
+    async def export_to_json(self):
         """Экспорт товаров и категорий в JSON файлы для GitHub Pages"""
         try:
-            # Получаем данные
             products = self.get_all_products()
             categories = self.get_all_categories()
             
@@ -115,9 +127,11 @@ class Database:
             for product in products:
                 if product['photo_id']:
                     try:
-                        # Для экспорта создаем URL фото
-                        product['photo_url'] = f"https://api.telegram.org/file/bot{TOKEN}/{product['photo_id']}"
-                    except:
+                        # Получаем файл от Telegram
+                        file = await bot.get_file(product['photo_id'])
+                        product['photo_url'] = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка получения фото: {e}")
                         product['photo_url'] = None
                 else:
                     product['photo_url'] = None
@@ -150,7 +164,7 @@ class Database:
     
     # ===== КАТЕГОРИИ =====
     
-    def add_category(self, name: str, parent_id: Optional[int] = None) -> int:
+    async def add_category(self, name: str, parent_id: Optional[int] = None) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
@@ -162,7 +176,7 @@ class Database:
         conn.close()
         
         # АВТОМАТИЧЕСКИЙ ЭКСПОРТ В JSON
-        self.export_to_json()
+        await self.export_to_json()
         
         return cat_id
     
@@ -210,7 +224,7 @@ class Database:
         conn.close()
         return result[0] if result else None
     
-    def delete_category(self, category_id: int) -> bool:
+    async def delete_category(self, category_id: int) -> bool:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
@@ -218,7 +232,7 @@ class Database:
         conn.close()
         
         # АВТОМАТИЧЕСКИЙ ЭКСПОРТ В JSON
-        self.export_to_json()
+        await self.export_to_json()
         
         return True
     
@@ -240,7 +254,7 @@ class Database:
     
     # ===== ТОВАРЫ =====
     
-    def add_product(self, category_id: int, name: str, description: str, 
+    async def add_product(self, category_id: int, name: str, description: str, 
                     price: float, photo_id: Optional[str] = None) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -253,7 +267,7 @@ class Database:
         conn.close()
         
         # АВТОМАТИЧЕСКИЙ ЭКСПОРТ В JSON
-        self.export_to_json()
+        await self.export_to_json()
         
         return prod_id
     
@@ -284,7 +298,7 @@ class Database:
         conn.close()
         return dict(result) if result else None
     
-    def delete_product(self, product_id: int) -> bool:
+    async def delete_product(self, product_id: int) -> bool:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
@@ -292,11 +306,11 @@ class Database:
         conn.close()
         
         # АВТОМАТИЧЕСКИЙ ЭКСПОРТ В JSON
-        self.export_to_json()
+        await self.export_to_json()
         
         return True
     
-    def toggle_product_stock(self, product_id: int) -> bool:
+    async def toggle_product_stock(self, product_id: int) -> bool:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE products SET in_stock = NOT in_stock WHERE id = ?", (product_id,))
@@ -304,7 +318,7 @@ class Database:
         conn.close()
         
         # АВТОМАТИЧЕСКИЙ ЭКСПОРТ В JSON
-        self.export_to_json()
+        await self.export_to_json()
         
         return True
     
@@ -541,7 +555,7 @@ async def process_category_name(message: Message, state: FSMContext):
     data = await state.get_data()
     parent_id = data.get('parent_id')
     
-    cat_id = db.add_category(category_name, parent_id)
+    cat_id = await db.add_category(category_name, parent_id)
     
     if parent_id:
         parent_name = data.get('parent_name')
@@ -623,6 +637,7 @@ async def process_product_name(message: Message, state: FSMContext):
         parse_mode="HTML"
     )
     await state.set_state(AddProduct.waiting_for_description)
+
 @router.message(AddProduct.waiting_for_description)
 async def process_product_description(message: Message, state: FSMContext):
     description = message.text.strip()
@@ -664,7 +679,7 @@ async def skip_product_photo(message: Message, state: FSMContext):
 async def save_product(message: Message, state: FSMContext, photo_id: Optional[str]):
     data = await state.get_data()
     
-    prod_id = db.add_product(
+    prod_id = await db.add_product(
         category_id=data['category_id'],
         name=data['name'],
         description=data['description'],
@@ -719,7 +734,7 @@ async def delete_category(callback: CallbackQuery):
     category_id = int(callback.data.split("_")[-1])
     category_name = db.get_category_name(category_id)
     
-    db.delete_category(category_id)
+    await db.delete_category(category_id)
     
     await callback.answer(f"✅ Категория '{category_name}' удалена!", show_alert=True)
     await manage_categories(callback)
@@ -741,7 +756,7 @@ async def manage_products(callback: CallbackQuery):
         return
     
     buttons = []
-    for prod in products[:20]:  # Первые 20
+    for prod in products[:20]:
         stock_emoji = "✅" if prod['in_stock'] else "❌"
         buttons.append([InlineKeyboardButton(
             text=f"{stock_emoji} {prod['name']} - {prod['price']}₽",
@@ -801,7 +816,7 @@ async def toggle_stock(callback: CallbackQuery):
         return
     
     product_id = int(callback.data.split("_")[-1])
-    db.toggle_product_stock(product_id)
+    await db.toggle_product_stock(product_id)
     
     await callback.answer("✅ Статус изменен!", show_alert=False)
     await manage_product_detail(callback)
@@ -816,7 +831,7 @@ async def delete_product(callback: CallbackQuery):
     product = db.get_product(product_id)
     
     if product:
-        db.delete_product(product_id)
+        await db.delete_product(product_id)
         await callback.answer(f"✅ Товар '{product['name']}' удален!", show_alert=True)
         await manage_products(callback)
     else:
@@ -831,11 +846,9 @@ async def handle_web_app_data(message: Message):
         data = json.loads(message.web_app_data.data)
         
         if data.get('type') == 'order':
-            # Получаем данные заказа
             items = data.get('items', [])
             total_price = data.get('total_price', 0)
             
-            # Формируем текст заказа
             order_text = f"""
 🛒 <b>НОВЫЙ ЗАКАЗ!</b>
 
@@ -854,7 +867,6 @@ async def handle_web_app_data(message: Message):
             
             order_text += f"\n💰 <b>ИТОГО:</b> {total_price}₽"
             
-            # Сохраняем заказ в БД
             order_id = db.create_order(
                 user_id=message.from_user.id,
                 username=message.from_user.username or '',
@@ -862,14 +874,12 @@ async def handle_web_app_data(message: Message):
                 total_price=total_price
             )
             
-            # Отправляем заказ администратору
             await bot.send_message(
                 chat_id=ADMIN_ID,
                 text=order_text + f"\n\n🆔 Заказ #{order_id}",
                 parse_mode="HTML"
             )
             
-            # Подтверждение покупателю
             await message.answer(
                 "✅ <b>Заказ оформлен!</b>\n\n"
                 f"Номер заказа: <b>#{order_id}</b>\n\n"
@@ -887,14 +897,12 @@ async def handle_web_app_data(message: Message):
 # ==================== API ДЛЯ MINI APP ====================
 
 from aiohttp import web
-from aiohttp.web import middleware
 import aiohttp_cors
 
 async def get_products_api(request):
     """API для получения товаров"""
     products = db.get_all_products()
     
-    # Конвертируем photo_id в URL
     for product in products:
         if product['photo_id']:
             try:
@@ -916,7 +924,6 @@ async def start_api_server():
     """Запуск API сервера для Mini App"""
     app = web.Application()
     
-    # Настраиваем CORS
     cors = aiohttp_cors.setup(app, defaults={
         "*": aiohttp_cors.ResourceOptions(
             allow_credentials=True,
@@ -925,7 +932,6 @@ async def start_api_server():
         )
     })
     
-    # Добавляем роуты
     cors.add(app.router.add_get('/api/products', get_products_api))
     cors.add(app.router.add_get('/api/categories', get_categories_api))
     
@@ -954,35 +960,13 @@ async def main():
     
     await on_startup()
     
-    # Запускаем API сервер
     await start_api_server()
     
     try:
         await dp.start_polling(bot, skip_updates=True)
     finally:
         await on_shutdown()
-import subprocess
-import os
 
-def push_to_github():
-    """Автоматически пушит изменения на GitHub"""
-    try:
-        # Переходим в папку проекта
-        os.chdir(os.path.dirname(os.path.abspath(__file__)))
-        
-        # Сначала пулим чтобы избежать конфликтов
-        subprocess.run(['git', 'pull', 'origin', 'master', '--allow-unrelated-histories'], check=True, capture_output=True)
-        
-        # Затем добавляем и коммитим
-        subprocess.run(['git', 'add', 'api/'], check=True)
-        subprocess.run(['git', 'commit', '-m', 'Auto-update: ' + datetime.now().strftime('%Y-%m-%d %H:%M:%S')], check=True)
-        subprocess.run(['git', 'push', 'origin', 'master'], check=True)
-        
-        logger.info("✅ Изменения запушены на GitHub")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Ошибка пуша на GitHub: {e}")
-        return False
 if __name__ == "__main__":
     try:
         asyncio.run(main())
