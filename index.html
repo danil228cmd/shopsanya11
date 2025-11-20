@@ -416,6 +416,23 @@
             padding: 40px;
             color: var(--tg-theme-hint-color, #999);
         }
+
+        .error-message {
+            text-align: center;
+            padding: 40px 20px;
+            color: #ff3b30;
+        }
+
+        .demo-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 10px 0;
+            text-align: center;
+            color: #856404;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -497,45 +514,168 @@
         let cart = [];
         let currentProduct = null;
         let currentQuantity = 1;
+        let isUsingDemoData = false;
+
+        // Конфигурация API
+        const API_CONFIG = {
+            LOCAL_SERVER: 'http://localhost:8080',
+            GITHUB_PAGES: 'https://danil228cmd.github.io/shopsanya11/', // ЗАМЕНИ НА СВОЙ
+            TIMEOUT: 5000
+        };
 
         // Загрузка данных
         async function loadData() {
+            showLoader();
+            
             try {
-                // Пробуем несколько вариантов API
-                const API_URLS = [
-                    'http://localhost:8080',  // Локальный сервер
-                    'https://ваш-ник.github.io/ваш-репозиторий/api'  // GitHub Pages (если настроите CORS)
-                ];
+                console.log('🔄 Начинаем загрузку данных...');
                 
-                let productsRes, categoriesRes;
-                
-                // Пробуем первый URL (локальный)
-                try {
-                    productsRes = await fetch(`${API_URLS[0]}/api/products`);
-                    categoriesRes = await fetch(`${API_URLS[0]}/api/categories`);
-                } catch {
-                    // Если локальный не работает, пробуем второй
-                    productsRes = await fetch(`${API_URLS[1]}/api/products`);
-                    categoriesRes = await fetch(`${API_URLS[1]}/api/categories`);
+                // Сначала пробуем локальный сервер
+                const localData = await tryLoadFromSource(API_CONFIG.LOCAL_SERVER, 'локальный сервер');
+                if (localData) {
+                    products = localData.products;
+                    categories = localData.categories;
+                    console.log('✅ Данные загружены с локального сервера');
+                    renderCategories();
+                    renderProducts();
+                    return;
                 }
                 
-                if (productsRes.ok && categoriesRes.ok) {
-                    products = await productsRes.json();
-                    categories = await categoriesRes.json();
-                    console.log('✅ Данные загружены');
-                } else {
-                    throw new Error('API не отвечает');
+                // Если локальный не работает, пробуем GitHub Pages
+                console.log('🔄 Локальный сервер недоступен, пробуем GitHub Pages...');
+                const githubData = await tryLoadFromGitHub();
+                if (githubData) {
+                    products = githubData.products;
+                    categories = githubData.categories;
+                    console.log('✅ Данные загружены с GitHub Pages');
+                    renderCategories();
+                    renderProducts();
+                    return;
                 }
+                
+                // Если ничего не работает, используем демо-данные
+                console.log('🔄 Все источники недоступны, используем демо-данные');
+                useDemoData();
                 
             } catch (error) {
-                console.error('❌ Ошибка загрузки:', error);
-                document.getElementById('productsGrid').innerHTML = 
-                    '<div class="empty-message">Ошибка загрузки товаров. Убедитесь что бот запущен.</div>';
-                return;
+                console.error('❌ Критическая ошибка:', error);
+                useDemoData();
             }
+        }
+
+        // Попытка загрузки с источника
+        async function tryLoadFromSource(baseUrl, sourceName) {
+            try {
+                console.log(`🔄 Пробуем ${sourceName}...`);
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.TIMEOUT);
+                
+                const [productsRes, categoriesRes] = await Promise.all([
+                    fetch(`${baseUrl}/api/products`, { signal: controller.signal }),
+                    fetch(`${baseUrl}/api/categories`, { signal: controller.signal })
+                ]);
+                
+                clearTimeout(timeoutId);
+                
+                if (productsRes.ok && categoriesRes.ok) {
+                    const products = await productsRes.json();
+                    const categories = await categoriesRes.json();
+                    return { products, categories };
+                } else {
+                    throw new Error(`HTTP error: ${productsRes.status}`);
+                }
+            } catch (error) {
+                console.log(`❌ ${sourceName} недоступен:`, error.message);
+                return null;
+            }
+        }
+
+        // Загрузка с GitHub Pages
+        async function tryLoadFromGitHub() {
+            try {
+                const [productsRes, categoriesRes] = await Promise.all([
+                    fetch(`${API_CONFIG.GITHUB_PAGES}/api/products.json`),
+                    fetch(`${API_CONFIG.GITHUB_PAGES}/api/categories.json`)
+                ]);
+                
+                if (productsRes.ok && categoriesRes.ok) {
+                    const products = await productsRes.json();
+                    const categories = await categoriesRes.json();
+                    return { products, categories };
+                } else {
+                    throw new Error('GitHub Pages недоступен');
+                }
+            } catch (error) {
+                console.log('❌ GitHub Pages недоступен:', error.message);
+                return null;
+            }
+        }
+
+        // Демо-данные
+        function useDemoData() {
+            isUsingDemoData = true;
             
+            products = [
+                {
+                    id: 1,
+                    name: "iPhone 15 Pro",
+                    price: 99990,
+                    category_id: 1,
+                    description: "Флагманский смартфон Apple с динамическим островом",
+                    photo_url: null
+                },
+                {
+                    id: 2,
+                    name: "Samsung Galaxy S24",
+                    price: 79990,
+                    category_id: 1,
+                    description: "Мощный Android смартфон с камерой 200MP",
+                    photo_url: null
+                },
+                {
+                    id: 3,
+                    name: "AirPods Pro",
+                    price: 24990,
+                    category_id: 2,
+                    description: "Беспроводные наушники с шумоподавлением",
+                    photo_url: null
+                },
+                {
+                    id: 4,
+                    name: "MacBook Air M3",
+                    price: 129990,
+                    category_id: 3,
+                    description: "Легкий и мощный ноутбук от Apple",
+                    photo_url: null
+                }
+            ];
+            
+            categories = [
+                { id: 1, name: "Смартфоны", parent_id: null },
+                { id: 2, name: "Наушники", parent_id: null },
+                { id: 3, name: "Ноутбуки", parent_id: null }
+            ];
+            
+            console.log('✅ Загружены демо-данные');
             renderCategories();
             renderProducts();
+            
+            // Показываем предупреждение о демо-данных
+            showDemoWarning();
+        }
+
+        // Показать предупреждение о демо-данных
+        function showDemoWarning() {
+            const warning = document.createElement('div');
+            warning.className = 'demo-warning';
+            warning.innerHTML = '⚠️ Используются демо-данные. Для загрузки реальных товаров убедитесь, что бот запущен.';
+            document.querySelector('.products-container').insertBefore(warning, document.getElementById('productsGrid'));
+        }
+
+        // Показать загрузчик
+        function showLoader() {
+            document.getElementById('productsGrid').innerHTML = '<div class="loader">Загрузка товаров...</div>';
         }
 
         // Отрисовка категорий
@@ -592,7 +732,7 @@
                 <div class="product-card" onclick="openProductModal(${product.id})">
                     <div class="product-image">
                         ${product.photo_url ? 
-                            `<img src="${product.photo_url}" alt="${product.name}">` : 
+                            `<img src="${product.photo_url}" alt="${product.name}" onerror="this.style.display='none'; this.parentNode.innerHTML='📦';">` : 
                             '📦'
                         }
                     </div>
@@ -619,7 +759,7 @@
             const modalImage = document.getElementById('modalImage');
             
             if (currentProduct.photo_url) {
-                modalImage.innerHTML = `<img src="${currentProduct.photo_url}" alt="${currentProduct.name}" style="width: 100%; height: 100%; object-fit: cover;">`;
+                modalImage.innerHTML = `<img src="${currentProduct.photo_url}" alt="${currentProduct.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 80px;\\'>📦</div>';">`;
             } else {
                 modalImage.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 80px;">📦</div>';
             }
@@ -724,7 +864,7 @@
                 <div class="cart-item">
                     <div class="cart-item-image">
                         ${item.photo_url ? 
-                            `<img src="${item.photo_url}" alt="${item.name}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">` : 
+                            `<img src="${item.photo_url}" alt="${item.name}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\\'width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 30px;\\'>📦</div>';">` : 
                             '<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 30px;">📦</div>'
                         }
                     </div>
@@ -793,7 +933,16 @@
             updateCartUI();
             document.getElementById('cartModal').classList.remove('active');
             
-            alert('✅ Заказ оформлен! Администратор свяжется с вами.');
+            // Показываем уведомление
+            if (tg.showPopup) {
+                tg.showPopup({
+                    title: 'Заказ оформлен!',
+                    message: 'Администратор свяжется с вами в ближайшее время.',
+                    buttons: [{ type: 'ok' }]
+                });
+            } else {
+                alert('✅ Заказ оформлен! Администратор свяжется с вами.');
+            }
         };
 
         // Закрыть модалки
@@ -825,4 +974,3 @@
     </script>
 </body>
 </html>
-
