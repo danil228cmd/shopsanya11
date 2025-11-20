@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Магазин</title>
+    <title>🛍 Мой Магазин</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * {
@@ -19,17 +19,12 @@
             padding: 0;
             overflow-x: hidden;
         }
-        /* Добавляем свой заголовок */
-        body::before {
-            content: "🛍 Мой Магазин";
-            display: block;
-            text-align: center;
-            padding: 10px;
-            font-weight: bold;
-            font-size: 18px;
-            background: var(--tg-theme-bg-color, #fff);
-            border-bottom: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+
+        /* Скрываем домен Telegram */
+        .tg-head {
+            display: none !important;
         }
+
         /* Хедер */
         .header {
             position: sticky;
@@ -40,14 +35,22 @@
             padding: 10px 15px;
         }
 
+        /* Заголовок магазина */
+        .shop-title {
+            text-align: center;
+            font-weight: bold;
+            font-size: 18px;
+            padding: 10px;
+            background: var(--tg-theme-bg-color, #fff);
+            border-bottom: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+        }
+
         /* Поиск */
         .search-box {
             position: relative;
             margin-bottom: 10px;
         }
-        .tg-head {
-            display: none !important;
-        }
+
         .search-input {
             width: 100%;
             padding: 12px 40px 12px 40px;
@@ -431,6 +434,9 @@
     </style>
 </head>
 <body>
+    <!-- Заголовок магазина -->
+    <div class="shop-title">🛍 Мой Магазин</div>
+
     <!-- Хедер -->
     <div class="header">
         <!-- Поиск -->
@@ -511,35 +517,35 @@
         let currentQuantity = 1;
 
         // Загрузка данных
-async function loadData() {
-    try {
-        // Используем локальный сервер бота
-        const API_URL = 'http://localhost:8080';
-        
-        console.log('🔄 Загружаем данные с локального сервера...');
-        const [productsRes, categoriesRes] = await Promise.all([
-            fetch(`${API_URL}/api/products`),
-            fetch(`${API_URL}/api/categories`)
-        ]);
-        
-        if (productsRes.ok && categoriesRes.ok) {
-            products = await productsRes.json();
-            categories = await categoriesRes.json();
-            console.log('✅ Данные загружены с локального сервера');
-        } else {
-            throw new Error('Локальный сервер не отвечает');
+        async function loadData() {
+            try {
+                // Используем локальный сервер бота
+                const API_URL = 'http://localhost:8080';
+                
+                console.log('🔄 Загружаем данные с локального сервера...');
+                const [productsRes, categoriesRes] = await Promise.all([
+                    fetch(`${API_URL}/api/products`),
+                    fetch(`${API_URL}/api/categories`)
+                ]);
+                
+                if (productsRes.ok && categoriesRes.ok) {
+                    products = await productsRes.json();
+                    categories = await categoriesRes.json();
+                    console.log('✅ Данные загружены с локального сервера');
+                } else {
+                    throw new Error('Локальный сервер не отвечает');
+                }
+                
+            } catch (error) {
+                console.error('❌ Ошибка загрузки:', error);
+                document.getElementById('productsGrid').innerHTML = 
+                    '<div class="empty-message">Ошибка загрузки товаров. Убедитесь что бот запущен.</div>';
+                return;
+            }
+            
+            renderCategories();
+            renderProducts();
         }
-        
-    } catch (error) {
-        console.error('❌ Ошибка загрузки:', error);
-        document.getElementById('productsGrid').innerHTML = 
-            '<div class="empty-message">Ошибка загрузки товаров. Убедитесь что бот запущен.</div>';
-        return;
-    }
-    
-    renderCategories();
-    renderProducts();
-}
 
         // Отрисовка категорий
         function renderCategories() {
@@ -558,16 +564,16 @@ async function loadData() {
 
         // Фильтр по категории
         function filterByCategory(categoryId) {
-        // Обновляем активную кнопку
+            // Обновляем активную кнопку
             document.querySelectorAll('.filter-btn').forEach(btn => {
-            btn.classList.remove('active');
-            if (btn.dataset.category == categoryId) {
-                btn.classList.add('active');
-        }
+                btn.classList.remove('active');
+                if (btn.dataset.category == categoryId) {
+                    btn.classList.add('active');
+                }
             });
 
-    renderProducts(categoryId === 'all' ? null : categoryId);
-}
+            renderProducts(categoryId === 'all' ? null : categoryId);
+        }
 
         // Отрисовка товаров
         function renderProducts(categoryId = null, searchQuery = '') {
@@ -828,6 +834,4 @@ async function loadData() {
         loadData();
     </script>
 </body>
-
 </html>
-
