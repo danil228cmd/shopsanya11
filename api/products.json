@@ -5,7 +5,7 @@
     "description": "е",
     "price": 777.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_9.jpg"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_10"
   },
   {
     "id": 8,
@@ -13,7 +13,7 @@
     "description": "уннуиун",
     "price": 616.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_8.jpg"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_11"
   },
   {
     "id": 7,
@@ -29,7 +29,7 @@
     "description": "цкмйцмкйц",
     "price": 61.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_7.jpg"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_12"
   },
   {
     "id": 5,
@@ -53,7 +53,7 @@
     "description": "йцмкйцкмй",
     "price": 31241.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_6.jpg"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_13"
   },
   {
     "id": 2,
@@ -61,7 +61,7 @@
     "description": "ЙЦСКЙЦКС",
     "price": 4141515.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_5.jpg"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_14"
   },
   {
     "id": 1,
@@ -69,6 +69,6 @@
     "description": "Дешевая блядота",
     "price": 2141.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_4.jpg"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_15"
   }
 ]
