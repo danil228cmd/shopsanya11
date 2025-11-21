@@ -15,6 +15,11 @@
     "parent_id": null
   },
   {
+    "id": 6,
+    "name": "Очки",
+    "parent_id": null
+  },
+  {
     "id": 2,
     "name": "Nike",
     "parent_id": 1
