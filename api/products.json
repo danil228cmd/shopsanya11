@@ -1,5 +1,13 @@
 [
   {
+    "id": 11,
+    "name": "Собака",
+    "description": "йцкмйцм",
+    "price": 15.0,
+    "category_id": 5,
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_17.jpg"
+  },
+  {
     "id": 10,
     "name": "Найкрашэ",
     "description": "Завжди",
