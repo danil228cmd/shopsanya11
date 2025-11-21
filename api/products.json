@@ -1,5 +1,13 @@
 [
   {
+    "id": 12,
+    "name": "Очки черные Louis Vuitton",
+    "description": "Качественные стильные очки черного цвета",
+    "price": 59999.0,
+    "category_id": 7,
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_18.jpg"
+  },
+  {
     "id": 11,
     "name": "Собака",
     "description": "йцкмйцм",
