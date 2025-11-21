@@ -678,11 +678,20 @@
             document.getElementById('productsGrid').innerHTML = '<div class="loader">Загрузка товаров...</div>';
         }
 
-        // Отрисовка категорий
+        // Отрисовка категорий - ОБНОВЛЕННАЯ ВЕРСИЯ
         function renderCategories() {
             const filtersContainer = document.getElementById('filters');
-            filtersContainer.innerHTML = '<button class="filter-btn active" data-category="all">Все</button>';
+            filtersContainer.innerHTML = '';
 
+            // Кнопка "Все"
+            const allBtn = document.createElement('button');
+            allBtn.className = 'filter-btn active';
+            allBtn.textContent = 'Все';
+            allBtn.dataset.category = 'all';
+            allBtn.onclick = () => filterByCategory('all');
+            filtersContainer.appendChild(allBtn);
+
+            // Категории
             categories.filter(c => !c.parent_id).forEach(category => {
                 const btn = document.createElement('button');
                 btn.className = 'filter-btn';
@@ -693,14 +702,21 @@
             });
         }
 
-        // Фильтр по категории
+        // Фильтр по категории - ИСПРАВЛЕННАЯ ВЕРСИЯ
         function filterByCategory(categoryId) {
+            // Убираем активное состояние у всех кнопок
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.classList.remove('active');
-                if (btn.dataset.category == categoryId || (categoryId === 'all' && btn.dataset.category === 'all')) {
-                    btn.classList.add('active');
-                }
             });
+            
+            // Находим и активируем нужную кнопку
+            const activeBtn = document.querySelector(`.filter-btn[data-category="${categoryId}"]`);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+            } else {
+                // Если не нашли (например для "Все"), активируем кнопку "Все"
+                document.querySelector('.filter-btn[data-category="all"]').classList.add('active');
+            }
 
             renderProducts(categoryId === 'all' ? null : categoryId);
         }
@@ -968,7 +984,14 @@
             const query = e.target.value;
             renderProducts(null, query);
         };
-
+        // Инициализация обработчиков после загрузки DOM
+        document.addEventListener('DOMContentLoaded', function() {
+            // Обработчик для кнопки "Все" (на всякий случай)
+            const allBtn = document.querySelector('.filter-btn[data-category="all"]');
+            if (allBtn) {
+                allBtn.onclick = () => filterByCategory('all');
+            }
+        });
         // Загрузка при старте
         loadData();
     </script>
