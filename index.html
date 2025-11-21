@@ -691,8 +691,10 @@
             allBtn.onclick = () => filterByCategory('all');
             filtersContainer.appendChild(allBtn);
 
-            // Категории
-            categories.filter(c => !c.parent_id).forEach(category => {
+            // Корневые категории (без parent_id)
+            const rootCategories = categories.filter(cat => !cat.parent_id);
+            
+            rootCategories.forEach(category => {
                 const btn = document.createElement('button');
                 btn.className = 'filter-btn';
                 btn.textContent = category.name;
@@ -702,34 +704,20 @@
             });
         }
 
-        // Фильтр по категории - ИСПРАВЛЕННАЯ ВЕРСИЯ
-        function filterByCategory(categoryId) {
-            // Убираем активное состояние у всех кнопок
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            
-            // Находим и активируем нужную кнопку
-            const activeBtn = document.querySelector(`.filter-btn[data-category="${categoryId}"]`);
-            if (activeBtn) {
-                activeBtn.classList.add('active');
-            } else {
-                // Если не нашли (например для "Все"), активируем кнопку "Все"
-                document.querySelector('.filter-btn[data-category="all"]').classList.add('active');
-            }
-
-            renderProducts(categoryId === 'all' ? null : categoryId);
-        }
-
         // Отрисовка товаров
         function renderProducts(categoryId = null, searchQuery = '') {
             const grid = document.getElementById('productsGrid');
             
             let filtered = products;
 
-            // Фильтр по категории
+            // Фильтр по категории (включая подкатегории)
             if (categoryId && categoryId !== 'all') {
-                filtered = filtered.filter(p => p.category_id == categoryId);
+                // Находим все подкатегории для выбранной категории
+                const subcategories = categories.filter(cat => cat.parent_id == categoryId).map(cat => cat.id);
+                // Добавляем саму категорию в список для фильтрации
+                const categoryIds = [parseInt(categoryId), ...subcategories];
+                // Фильтруем товары, у которых category_id находится в categoryIds
+                filtered = filtered.filter(p => categoryIds.includes(p.category_id));
             }
 
             // Поиск
@@ -761,6 +749,29 @@
                     </div>
                 </div>
             `).join('');
+        }
+
+        // Фильтр по категории - ИСПРАВЛЕННАЯ ВЕРСИЯ
+        function filterByCategory(categoryId) {
+            // Убираем активное состояние у всех кнопок
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Находим и активируем нужную кнопку
+            const activeBtn = document.querySelector(`.filter-btn[data-category="${categoryId}"]`);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+            } else {
+                // Если не нашли (например для "Все"), активируем кнопку "Все"
+                document.querySelector('.filter-btn[data-category="all"]').classList.add('active');
+            }
+
+            // Получаем текущий поисковый запрос
+            const searchQuery = document.getElementById('searchInput').value;
+            
+            // Рендерим товары с учетом категории и поиска
+            renderProducts(categoryId === 'all' ? null : categoryId, searchQuery);
         }
 
         // Открыть модальное окно товара
@@ -982,7 +993,15 @@
         // Поиск
         document.getElementById('searchInput').oninput = (e) => {
             const query = e.target.value;
-            renderProducts(null, query);
+            
+            // Определяем активную категорию
+            let activeCategory = null;
+            const activeBtn = document.querySelector('.filter-btn.active');
+            if (activeBtn && activeBtn.dataset.category !== 'all') {
+                activeCategory = activeBtn.dataset.category;
+            }
+            
+            renderProducts(activeCategory, query);
         };
         // Инициализация обработчиков после загрузки DOM
         document.addEventListener('DOMContentLoaded', function() {
