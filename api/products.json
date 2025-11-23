@@ -5,7 +5,7 @@
     "description": "Качественные стильные очки черного цвета",
     "price": 59999.0,
     "category_id": 7,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_18.jpg"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_19.jpg"
   },
   {
     "id": 11,
@@ -13,7 +13,7 @@
     "description": "йцкмйцм",
     "price": 15.0,
     "category_id": 5,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_17.jpg"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_20.jpg"
   },
   {
     "id": 10,
@@ -21,7 +21,7 @@
     "description": "Завжди",
     "price": 211111.0,
     "category_id": 4,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_16.jpg"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_21.jpg"
   },
   {
     "id": 9,
@@ -29,7 +29,7 @@
     "description": "е",
     "price": 777.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_10"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_22"
   },
   {
     "id": 8,
@@ -37,7 +37,7 @@
     "description": "уннуиун",
     "price": 616.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_11"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_23"
   },
   {
     "id": 7,
@@ -53,7 +53,7 @@
     "description": "цкмйцмкйц",
     "price": 61.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_12"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_24"
   },
   {
     "id": 5,
@@ -77,7 +77,7 @@
     "description": "йцмкйцкмй",
     "price": 31241.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_13"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_25"
   },
   {
     "id": 2,
@@ -85,7 +85,7 @@
     "description": "ЙЦСКЙЦКС",
     "price": 4141515.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_14"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_26"
   },
   {
     "id": 1,
@@ -93,6 +93,6 @@
     "description": "Дешевая блядота",
     "price": 2141.0,
     "category_id": 2,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_15"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_27"
   }
 ]
