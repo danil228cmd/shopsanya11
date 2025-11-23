@@ -1,10 +1,5 @@
 [
   {
-    "id": 1,
-    "name": "Обувь",
-    "parent_id": null
-  },
-  {
     "id": 6,
     "name": "Очки",
     "parent_id": null
