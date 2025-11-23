@@ -51,18 +51,9 @@ def push_to_github():
     try:
         os.chdir(os.path.dirname(os.path.abspath(__file__)))
         
-        # Проверяем, есть ли изменения
-        status_result = subprocess.run(['git', 'status', '--porcelain'], 
-                                     capture_output=True, text=True, check=True)
-        
-        if not status_result.stdout.strip():
-            logger.info("⚠️ Нет изменений для пуша")
-            return True
-        
-        subprocess.run(['git', 'add', 'api/', '.'], check=True)
-        subprocess.run(['git', 'commit', '-m', f'Auto-update: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'], 
-                      check=True)
-        subprocess.run(['git', 'push', 'origin', 'main'], check=True)  # или 'master'
+        subprocess.run(['git', 'add', 'api/'], check=True)
+        subprocess.run(['git', 'commit', '-m', 'Auto-update: ' + datetime.now().strftime('%Y-%m-%d %H:%M:%S')], check=True)
+        subprocess.run(['git', 'push', 'origin', 'master'], check=True)
         
         logger.info("✅ Изменения запушены на GitHub")
         return True
@@ -126,36 +117,54 @@ class Database:
         conn.close()
         logger.info("✅ База данных инициализирована")
     
-async def export_to_json(self):
-    """Экспорт товаров и категорий в JSON"""
-    try:
-        products = self.get_all_products()
-        categories = self.get_all_categories()
-        
-        # Создаем папку api если нет
-        os.makedirs('api', exist_ok=True)
-        
-        # Сохраняем в JSON файлы
-        with open('api/products.json', 'w', encoding='utf-8') as f:
-            json.dump(products, f, ensure_ascii=False, indent=2)
-        
-        with open('api/categories.json', 'w', encoding='utf-8') as f:
-            json.dump(categories, f, ensure_ascii=False, indent=2)
-        
-        logger.info("✅ Данные экспортированы в JSON")
-        
-        # ✅ Добавьте эту строку для принудительной синхронизации
-        push_to_github()
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка экспорта в JSON: {e}")
-        return False
+    async def export_to_json(self):
+        """Экспорт товаров и категорий в JSON файлы для GitHub Pages"""
+        try:
+            products = self.get_all_products()
+            categories = self.get_all_categories()
+            
+            # Конвертируем photo_id в URL для товаров
+            for product in products:
+                if product['photo_id']:
+                    try:
+                        # Получаем файл от Telegram
+                        file = await bot.get_file(product['photo_id'])
+                        product['photo_url'] = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка получения фото: {e}")
+                        product['photo_url'] = None
+                else:
+                    product['photo_url'] = None
+                
+                # Убираем лишние поля
+                if 'category_name' in product:
+                    del product['category_name']
+                if 'photo_id' in product:
+                    del product['photo_id']
+                if 'in_stock' in product:
+                    del product['in_stock']
+            
+            # Создаем папку api если нет
+            os.makedirs('api', exist_ok=True)
+            
+            # Сохраняем в JSON файлы
+            with open('api/products.json', 'w', encoding='utf-8') as f:
+                json.dump(products, f, ensure_ascii=False, indent=2)
+            
+            with open('api/categories.json', 'w', encoding='utf-8') as f:
+                json.dump(categories, f, ensure_ascii=False, indent=2)
+            
+            logger.info("✅ Данные экспортированы в JSON")
+            push_to_github()
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка экспорта в JSON: {e}")
+            return False
     
     # ===== КАТЕГОРИИ =====
     
-async def add_category(self, name: str, parent_id: Optional[int] = None) -> int:
+    async def add_category(self, name: str, parent_id: Optional[int] = None) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
@@ -171,7 +180,7 @@ async def add_category(self, name: str, parent_id: Optional[int] = None) -> int:
         
         return cat_id
     
-def get_root_categories(self) -> List[dict]:
+    def get_root_categories(self) -> List[dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -183,7 +192,7 @@ def get_root_categories(self) -> List[dict]:
         conn.close()
         return categories
     
-def get_subcategories(self, parent_id: int) -> List[dict]:
+    def get_subcategories(self, parent_id: int) -> List[dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -195,7 +204,7 @@ def get_subcategories(self, parent_id: int) -> List[dict]:
         conn.close()
         return categories
     
-def get_all_categories(self) -> List[dict]:
+    def get_all_categories(self) -> List[dict]:
         """Получить все категории для API"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -207,7 +216,7 @@ def get_all_categories(self) -> List[dict]:
         conn.close()
         return categories
     
-def get_category_name(self, category_id: int) -> Optional[str]:
+    def get_category_name(self, category_id: int) -> Optional[str]:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM categories WHERE id = ?", (category_id,))
@@ -215,7 +224,7 @@ def get_category_name(self, category_id: int) -> Optional[str]:
         conn.close()
         return result[0] if result else None
     
-async def delete_category(self, category_id: int) -> bool:
+    async def delete_category(self, category_id: int) -> bool:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
@@ -227,7 +236,7 @@ async def delete_category(self, category_id: int) -> bool:
         
         return True
     
-def get_leaf_categories(self) -> List[dict]:
+    def get_leaf_categories(self) -> List[dict]:
         """Получить конечные категории (без подкатегорий)"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -245,7 +254,7 @@ def get_leaf_categories(self) -> List[dict]:
     
     # ===== ТОВАРЫ =====
     
-async def add_product(self, category_id: int, name: str, description: str, 
+    async def add_product(self, category_id: int, name: str, description: str, 
                     price: float, photo_id: Optional[str] = None) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -262,7 +271,7 @@ async def add_product(self, category_id: int, name: str, description: str,
         
         return prod_id
     
-def get_all_products(self) -> List[dict]:
+    def get_all_products(self) -> List[dict]:
         """Получить все товары для Mini App"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -278,7 +287,7 @@ def get_all_products(self) -> List[dict]:
         conn.close()
         return products
     
-def get_product(self, product_id: int) -> Optional[dict]:
+    def get_product(self, product_id: int) -> Optional[dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -289,7 +298,7 @@ def get_product(self, product_id: int) -> Optional[dict]:
         conn.close()
         return dict(result) if result else None
     
-async def delete_product(self, product_id: int) -> bool:
+    async def delete_product(self, product_id: int) -> bool:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
@@ -301,7 +310,7 @@ async def delete_product(self, product_id: int) -> bool:
         
         return True
     
-async def toggle_product_stock(self, product_id: int) -> bool:
+    async def toggle_product_stock(self, product_id: int) -> bool:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE products SET in_stock = NOT in_stock WHERE id = ?", (product_id,))
@@ -315,7 +324,7 @@ async def toggle_product_stock(self, product_id: int) -> bool:
     
     # ===== ЗАКАЗЫ =====
     
-def create_order(self, user_id: int, username: str, items: str, total_price: float) -> int:
+    def create_order(self, user_id: int, username: str, items: str, total_price: float) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
