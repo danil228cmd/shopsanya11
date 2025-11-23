@@ -1,17 +1,2 @@
 [
-  {
-    "id": 2,
-    "name": "Nike",
-    "parent_id": 1
-  },
-  {
-    "id": 4,
-    "name": "Vetements",
-    "parent_id": 3
-  },
-  {
-    "id": 7,
-    "name": "Louis Vuitton",
-    "parent_id": 6
-  }
 ]
