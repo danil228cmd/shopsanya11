@@ -15,7 +15,7 @@ import sqlite3
 from typing import List, Optional, Tuple
 import json
 from datetime import datetime
-
+from aiogram.exceptions import TelegramBadRequest
 # Загрузка переменных окружения
 def load_env():
     if os.path.exists('.env'):
@@ -141,8 +141,7 @@ class Database:
                     del product['category_name']
                 if 'photo_id' in product:
                     del product['photo_id']
-                if 'in_stock' in product:
-                    del product['in_stock']
+
             
             # Создаем папку api если нет
             os.makedirs('api', exist_ok=True)
@@ -966,7 +965,17 @@ async def main():
         await dp.start_polling(bot, skip_updates=True)
     finally:
         await on_shutdown()
+# ==================== ОБРАБОТКА ОШИБОК ====================
 
+@router.errors()
+async def errors_handler(update, exception):
+    """Отлов всех ошибок, включая 'message is not modified'"""
+    if "message is not modified" in str(exception):
+        logger.debug("Игнорируем 'message is not modified' (пользователь дважды нажал кнопку)")
+        return True  # Ошибка обработана
+    
+    logger.error(f"Необработанная ошибка: {exception}")
+    return False  # Ошибка не обработана
 if __name__ == "__main__":
     try:
         asyncio.run(main())

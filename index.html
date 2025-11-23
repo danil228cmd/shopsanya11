@@ -433,6 +433,32 @@
             color: #856404;
             font-size: 14px;
         }
+        /* Индикатор наличия товара */
+        .stock-indicator {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            display: inline-block;
+        }
+
+        .stock-indicator.in-stock {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .stock-indicator.out-of-stock {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        /* Отключенная кнопка */
+        .add-to-cart-btn:disabled {
+            background: #ccc !important;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
     </style>
 </head>
 <body>
@@ -704,19 +730,16 @@
             });
         }
 
-        // Отрисовка товаров
+        // Отрисовка товаров (с индикатором наличия)
         function renderProducts(categoryId = null, searchQuery = '') {
             const grid = document.getElementById('productsGrid');
             
             let filtered = products;
 
-            // Фильтр по категории (включая подкатегории)
+            // Фильтр по категории
             if (categoryId && categoryId !== 'all') {
-                // Находим все подкатегории для выбранной категории
                 const subcategories = categories.filter(cat => cat.parent_id == categoryId).map(cat => cat.id);
-                // Добавляем саму категорию в список для фильтрации
                 const categoryIds = [parseInt(categoryId), ...subcategories];
-                // Фильтруем товары, у которых category_id находится в categoryIds
                 filtered = filtered.filter(p => categoryIds.includes(p.category_id));
             }
 
@@ -743,8 +766,14 @@
                     <div class="product-info">
                         <div class="product-name">${product.name}</div>
                         <div class="product-price">${product.price}₽</div>
-                        <button class="add-to-cart-btn" onclick="event.stopPropagation(); quickAddToCart(${product.id})">
-                            В корзину
+                        ${product.in_stock ? 
+                            '<div class="stock-indicator in-stock">✅ В наличии</div>' : 
+                            '<div class="stock-indicator out-of-stock">❌ Нет в наличии</div>'
+                        }
+                        <button class="add-to-cart-btn" 
+                                onclick="event.stopPropagation(); quickAddToCart(${product.id})" 
+                                ${!product.in_stock ? 'disabled' : ''}>
+                            ${product.in_stock ? 'В корзину' : 'Нет в наличии'}
                         </button>
                     </div>
                 </div>
@@ -786,16 +815,34 @@
             const modalImage = document.getElementById('modalImage');
             
             if (currentProduct.photo_url) {
-                modalImage.innerHTML = `<img src="${currentProduct.photo_url}" alt="${currentProduct.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 80px;\\'>📦</div>';">`;
+                modalImage.innerHTML = `<img src="${currentProduct.photo_url}" alt="${currentProduct.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\\'width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 80px;\\'>📦</div>';">`;
             } else {
-                modalImage.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 80px;">📦</div>';
+                modalImage.innerHTML = '<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 80px;">📦</div>';
             }
 
             document.getElementById('modalName').textContent = currentProduct.name;
             document.getElementById('modalPrice').textContent = currentProduct.price + '₽';
+            
+            // Добавляем индикатор наличия в модалку
+            const stockIndicator = document.createElement('div');
+            stockIndicator.className = `stock-indicator ${currentProduct.in_stock ? 'in-stock' : 'out-of-stock'}`;
+            stockIndicator.textContent = currentProduct.in_stock ? '✅ В наличии' : '❌ Нет в наличии';
+            
+            const modalBody = document.querySelector('.modal-body');
+            const existingIndicator = modalBody.querySelector('.stock-indicator');
+            if (existingIndicator) {
+                existingIndicator.remove();
+            }
+            modalBody.insertBefore(stockIndicator, document.getElementById('modalDescription'));
+            
             document.getElementById('modalDescription').textContent = currentProduct.description;
 
             modal.classList.add('active');
+            
+            // Отключаем кнопку добавления, если товара нет в наличии
+            const addBtn = document.getElementById('addToCartBtn');
+            addBtn.disabled = !currentProduct.in_stock;
+            addBtn.textContent = currentProduct.in_stock ? 'Добавить в корзину' : 'Нет в наличии';
         }
 
         // Быстрое добавление в корзину
