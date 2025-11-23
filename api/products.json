@@ -1,13 +1,5 @@
 [
   {
-    "id": 10,
-    "name": "Найкрашэ",
-    "description": "Завжди",
-    "price": 211111.0,
-    "category_id": 4,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_21.jpg"
-  },
-  {
     "id": 9,
     "name": "Е Е Е Е",
     "description": "е",
