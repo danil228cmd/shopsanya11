@@ -740,9 +740,9 @@
 
     // Конфигурация API
     const API_CONFIG = {
-        LOCAL_SERVER: 'http://localhost:8080',
+        LOCAL_SERVER: 'http://192.168.0.11:8080',
         GITHUB_PAGES: 'https://danil228cmd.github.io/shopsanya11/',
-        TIMEOUT: 1000
+        TIMEOUT: 3000
     };
 
     // Загрузка данных
@@ -813,26 +813,26 @@
         }
     }
 
-    // Загрузка с GitHub Pages
-    async function tryLoadFromGitHub() {
-        try {
-            const [productsRes, categoriesRes] = await Promise.all([
-                fetch(`${API_CONFIG.GITHUB_PAGES}/api/products.json`),
-                fetch(`${API_CONFIG.GITHUB_PAGES}/api/categories.json`)
-            ]);
-            
-            if (productsRes.ok && categoriesRes.ok) {
-                const products = await productsRes.json();
-                const categories = await categoriesRes.json();
-                return { products, categories };
-            } else {
-                throw new Error('GitHub Pages недоступен');
-            }
-        } catch (error) {
-            console.log('❌ GitHub Pages недоступен:', error.message);
-            return null;
+// НАЙДИТЕ ЭТУ ФУНКЦИЮ и замените
+async function tryLoadFromGitHub() {
+    try {
+        const [productsRes, categoriesRes] = await Promise.all([
+            fetch(`${API_CONFIG.GITHUB_PAGES}/api/products.json`),
+            fetch(`${API_CONFIG.GITHUB_PAGES}/api/categories.json`)
+        ]);
+        
+        if (productsRes.ok && categoriesRes.ok) {
+            const products = await productsRes.json();
+            const categories = await categoriesRes.json();
+            return { products, categories }; // ✅ БЫЛО: return { products: localData.products, ... }
+        } else {
+            throw new Error('GitHub Pages недоступен');
         }
+    } catch (error) {
+        console.log('❌ GitHub Pages недоступен:', error.message);
+        return null;
     }
+}
 
     // Skeleton loader
     function showSkeletonLoader() {
