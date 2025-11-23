@@ -155,7 +155,7 @@ async def export_to_json(self):
     
     # ===== КАТЕГОРИИ =====
     
-    async def add_category(self, name: str, parent_id: Optional[int] = None) -> int:
+async def add_category(self, name: str, parent_id: Optional[int] = None) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
@@ -171,7 +171,7 @@ async def export_to_json(self):
         
         return cat_id
     
-    def get_root_categories(self) -> List[dict]:
+def get_root_categories(self) -> List[dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -183,7 +183,7 @@ async def export_to_json(self):
         conn.close()
         return categories
     
-    def get_subcategories(self, parent_id: int) -> List[dict]:
+def get_subcategories(self, parent_id: int) -> List[dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -195,7 +195,7 @@ async def export_to_json(self):
         conn.close()
         return categories
     
-    def get_all_categories(self) -> List[dict]:
+def get_all_categories(self) -> List[dict]:
         """Получить все категории для API"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -207,7 +207,7 @@ async def export_to_json(self):
         conn.close()
         return categories
     
-    def get_category_name(self, category_id: int) -> Optional[str]:
+def get_category_name(self, category_id: int) -> Optional[str]:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM categories WHERE id = ?", (category_id,))
@@ -215,7 +215,7 @@ async def export_to_json(self):
         conn.close()
         return result[0] if result else None
     
-    async def delete_category(self, category_id: int) -> bool:
+async def delete_category(self, category_id: int) -> bool:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
@@ -227,7 +227,7 @@ async def export_to_json(self):
         
         return True
     
-    def get_leaf_categories(self) -> List[dict]:
+def get_leaf_categories(self) -> List[dict]:
         """Получить конечные категории (без подкатегорий)"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -245,7 +245,7 @@ async def export_to_json(self):
     
     # ===== ТОВАРЫ =====
     
-    async def add_product(self, category_id: int, name: str, description: str, 
+async def add_product(self, category_id: int, name: str, description: str, 
                     price: float, photo_id: Optional[str] = None) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -262,7 +262,7 @@ async def export_to_json(self):
         
         return prod_id
     
-    def get_all_products(self) -> List[dict]:
+def get_all_products(self) -> List[dict]:
         """Получить все товары для Mini App"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -278,7 +278,7 @@ async def export_to_json(self):
         conn.close()
         return products
     
-    def get_product(self, product_id: int) -> Optional[dict]:
+def get_product(self, product_id: int) -> Optional[dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -289,7 +289,7 @@ async def export_to_json(self):
         conn.close()
         return dict(result) if result else None
     
-    async def delete_product(self, product_id: int) -> bool:
+async def delete_product(self, product_id: int) -> bool:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
@@ -301,7 +301,7 @@ async def export_to_json(self):
         
         return True
     
-    async def toggle_product_stock(self, product_id: int) -> bool:
+async def toggle_product_stock(self, product_id: int) -> bool:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE products SET in_stock = NOT in_stock WHERE id = ?", (product_id,))
@@ -315,7 +315,7 @@ async def export_to_json(self):
     
     # ===== ЗАКАЗЫ =====
     
-    def create_order(self, user_id: int, username: str, items: str, total_price: float) -> int:
+def create_order(self, user_id: int, username: str, items: str, total_price: float) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
