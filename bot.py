@@ -16,6 +16,7 @@ from typing import List, Optional, Tuple
 import json
 from datetime import datetime
 from aiogram.exceptions import TelegramBadRequest
+
 # Загрузка переменных окружения
 def load_env():
     if os.path.exists('.env'):
@@ -117,6 +118,17 @@ class Database:
         conn.close()
         logger.info("✅ База данных инициализирована")
     
+    def clear_all_data(self):
+        """Очистка всех данных (категории и товары)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM products")
+        cursor.execute("DELETE FROM categories")
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('products', 'categories')")
+        conn.commit()
+        conn.close()
+        logger.info("🗑️ Все данные очищены")
+    
     async def export_to_json(self):
         """Экспорт товаров и категорий в JSON файлы для GitHub Pages"""
         try:
@@ -127,7 +139,6 @@ class Database:
             for product in products:
                 if product['photo_id']:
                     try:
-                        # Получаем файл от Telegram
                         file = await bot.get_file(product['photo_id'])
                         product['photo_url'] = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
                     except Exception as e:
@@ -136,17 +147,13 @@ class Database:
                 else:
                     product['photo_url'] = None
                 
-                # Убираем лишние поля
                 if 'category_name' in product:
                     del product['category_name']
                 if 'photo_id' in product:
                     del product['photo_id']
-
             
-            # Создаем папку api если нет
             os.makedirs('api', exist_ok=True)
             
-            # Сохраняем в JSON файлы
             with open('api/products.json', 'w', encoding='utf-8') as f:
                 json.dump(products, f, ensure_ascii=False, indent=2)
             
@@ -174,9 +181,7 @@ class Database:
         conn.commit()
         conn.close()
         
-        # АВТОМАТИЧЕСКИЙ ЭКСПОРТ В JSON
         await self.export_to_json()
-        
         return cat_id
     
     def get_root_categories(self) -> List[dict]:
@@ -204,7 +209,6 @@ class Database:
         return categories
     
     def get_all_categories(self) -> List[dict]:
-        """Получить все категории для API"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -230,13 +234,10 @@ class Database:
         conn.commit()
         conn.close()
         
-        # АВТОМАТИЧЕСКИЙ ЭКСПОРТ В JSON
         await self.export_to_json()
-        
         return True
     
     def get_leaf_categories(self) -> List[dict]:
-        """Получить конечные категории (без подкатегорий)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -258,20 +259,17 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO products (category_id, name, description, price, photo_id)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO products (category_id, name, description, price, photo_id, in_stock)
+            VALUES (?, ?, ?, ?, ?, 1)
         """, (category_id, name, description, price, photo_id))
         prod_id = cursor.lastrowid
         conn.commit()
         conn.close()
         
-        # АВТОМАТИЧЕСКИЙ ЭКСПОРТ В JSON
         await self.export_to_json()
-        
         return prod_id
     
     def get_all_products(self) -> List[dict]:
-        """Получить все товары для Mini App"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -279,7 +277,6 @@ class Database:
                    p.category_id, p.in_stock, c.name as category_name
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
-            WHERE p.in_stock = 1
             ORDER BY p.created_at DESC
         """)
         products = [dict(row) for row in cursor.fetchall()]
@@ -304,21 +301,32 @@ class Database:
         conn.commit()
         conn.close()
         
-        # АВТОМАТИЧЕСКИЙ ЭКСПОРТ В JSON
         await self.export_to_json()
-        
         return True
     
     async def toggle_product_stock(self, product_id: int) -> bool:
+        """Переключить наличие товара"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("UPDATE products SET in_stock = NOT in_stock WHERE id = ?", (product_id,))
+        
+        # Получаем текущий статус
+        cursor.execute("SELECT in_stock FROM products WHERE id = ?", (product_id,))
+        result = cursor.fetchone()
+        
+        if result is None:
+            conn.close()
+            return False
+        
+        current_stock = result[0]
+        new_stock = 0 if current_stock else 1
+        
+        # Обновляем статус
+        cursor.execute("UPDATE products SET in_stock = ? WHERE id = ?", (new_stock, product_id))
         conn.commit()
         conn.close()
         
-        # АВТОМАТИЧЕСКИЙ ЭКСПОРТ В JSON
         await self.export_to_json()
-        
+        logger.info(f"✅ Товар {product_id}: наличие изменено с {current_stock} на {new_stock}")
         return True
     
     # ===== ЗАКАЗЫ =====
@@ -352,10 +360,9 @@ class AddProduct(StatesGroup):
 # ==================== КЛАВИАТУРЫ ====================
 
 def get_main_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
-    """Главное меню"""
     buttons = [
         [InlineKeyboardButton(
-            text="🛍 Открыть магазин", 
+            text="🛒 Открыть магазин", 
             web_app=WebAppInfo(url=WEBAPP_URL)
         )]
     ]
@@ -366,18 +373,17 @@ def get_main_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_admin_keyboard() -> InlineKeyboardMarkup:
-    """Админ-панель"""
     buttons = [
         [InlineKeyboardButton(text="➕ Добавить категорию", callback_data="add_category")],
         [InlineKeyboardButton(text="➕ Добавить товар", callback_data="add_product")],
         [InlineKeyboardButton(text="📋 Управление категориями", callback_data="manage_categories")],
         [InlineKeyboardButton(text="📦 Управление товарами", callback_data="manage_products")],
+        [InlineKeyboardButton(text="🗑️ ОЧИСТИТЬ ВСЁ", callback_data="clear_all_data")],
         [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_category_type_keyboard() -> InlineKeyboardMarkup:
-    """Выбор типа категории"""
     buttons = [
         [InlineKeyboardButton(text="📁 Основная категория", callback_data="addcat_root")],
         [InlineKeyboardButton(text="📂 Подкатегория", callback_data="addcat_sub")],
@@ -386,7 +392,6 @@ def get_category_type_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_categories_keyboard(parent_id: Optional[int] = None, action: str = "select") -> InlineKeyboardMarkup:
-    """Клавиатура с категориями"""
     if parent_id is None:
         categories = db.get_root_categories()
     else:
@@ -399,7 +404,7 @@ def get_categories_keyboard(parent_id: Optional[int] = None, action: str = "sele
             callback_data=f"{action}_cat_{cat['id']}"
         )])
     
-    back_action = "admin_panel" if action == "select" else "manage_categories"
+    back_action = "admin_panel" if action == "select" else "admin_panel"
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=back_action)])
     
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -413,7 +418,6 @@ def get_back_keyboard(callback: str = "admin_panel") -> InlineKeyboardMarkup:
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    """Приветственное сообщение"""
     is_admin = message.from_user.id == ADMIN_ID
     
     welcome_text = f"""
@@ -421,7 +425,7 @@ async def cmd_start(message: Message):
 
 Привет, {message.from_user.first_name}! 👋
 
-🛍 <b>У нас есть:</b>
+🛒 <b>У нас есть:</b>
 • Огромный выбор товаров
 • Удобный каталог с поиском
 • Быстрое оформление заказа
@@ -440,11 +444,15 @@ async def show_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     is_admin = callback.from_user.id == ADMIN_ID
     
-    await callback.message.edit_text(
-        "🏠 <b>Главное меню</b>\n\nВыберите действие:",
-        reply_markup=get_main_keyboard(is_admin),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            "🏠 <b>Главное меню</b>\n\nВыберите действие:",
+            reply_markup=get_main_keyboard(is_admin),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        pass
+    
     await callback.answer()
 
 # ==================== АДМИН ПАНЕЛЬ ====================
@@ -465,17 +473,33 @@ async def show_admin_panel(callback: CallbackQuery, state: FSMContext):
 
 📊 <b>Статистика:</b>
 📦 Категорий: {categories_count}
-🛍 Товаров: {products_count}
+🛒 Товаров: {products_count}
 
 Выберите действие:
 """
     
-    await callback.message.edit_text(
-        admin_text,
-        reply_markup=get_admin_keyboard(),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            admin_text,
+            reply_markup=get_admin_keyboard(),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        pass
+    
     await callback.answer()
+
+@router.callback_query(F.data == "clear_all_data")
+async def clear_all_data(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ Нет доступа!", show_alert=True)
+        return
+    
+    db.clear_all_data()
+    await db.export_to_json()
+    
+    await callback.answer("✅ Все данные очищены!", show_alert=True)
+    await show_admin_panel(callback, FSMContext(storage=storage, key=None))
 
 # ===== ДОБАВЛЕНИЕ КАТЕГОРИИ =====
 
@@ -485,14 +509,18 @@ async def start_add_category(callback: CallbackQuery):
         await callback.answer("❌ У вас нет доступа!", show_alert=True)
         return
     
-    await callback.message.edit_text(
-        "➕ <b>Добавление категории</b>\n\n"
-        "Выберите тип:\n\n"
-        "📁 <b>Основная</b> - корневая категория (Обувь, Одежда)\n"
-        "📂 <b>Подкатегория</b> - вложенная (Nike внутри Обуви)",
-        reply_markup=get_category_type_keyboard(),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            "➕ <b>Добавление категории</b>\n\n"
+            "Выберите тип:\n\n"
+            "📁 <b>Основная</b> - корневая категория (Обувь, Одежда)\n"
+            "📂 <b>Подкатегория</b> - вложенная (Nike внутри Обуви)",
+            reply_markup=get_category_type_keyboard(),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        pass
+    
     await callback.answer()
 
 @router.callback_query(F.data == "addcat_root")
@@ -692,7 +720,7 @@ async def save_product(message: Message, state: FSMContext, photo_id: Optional[s
         f"✅ <b>Товар добавлен!</b>\n\n"
         f"🆔 ID: {prod_id}\n"
         f"📂 Категория: {data['category_name']}\n"
-        f"🛍 Название: {data['name']}\n"
+        f"🛒 Название: {data['name']}\n"
         f"💰 Цена: {data['price']}₽\n"
         f"{media_status}",
         reply_markup=get_admin_keyboard(),
@@ -711,17 +739,23 @@ async def manage_categories(callback: CallbackQuery):
     categories = db.get_all_categories()
     
     if not categories:
-        await callback.message.edit_text(
-            "📋 Категории отсутствуют",
-            reply_markup=get_back_keyboard("admin_panel"),
-            parse_mode="HTML"
-        )
+        try:
+            await callback.message.edit_text(
+                "📋 Категории отсутствуют",
+                reply_markup=get_back_keyboard("admin_panel"),
+                parse_mode="HTML"
+            )
+        except TelegramBadRequest:
+            pass
     else:
-        await callback.message.edit_text(
-            "📋 <b>Управление категориями</b>\n\nВыберите для удаления:",
-            reply_markup=get_categories_keyboard(parent_id=None, action="delete"),
-            parse_mode="HTML"
-        )
+        try:
+            await callback.message.edit_text(
+                "📋 <b>Управление категориями</b>\n\nВыберите для удаления:",
+                reply_markup=get_categories_keyboard(parent_id=None, action="delete"),
+                parse_mode="HTML"
+            )
+        except TelegramBadRequest:
+            pass
     await callback.answer()
 
 @router.callback_query(F.data.startswith("delete_cat_"))
@@ -747,11 +781,14 @@ async def manage_products(callback: CallbackQuery):
     products = db.get_all_products()
     
     if not products:
-        await callback.message.edit_text(
-            "📦 Товары отсутствуют",
-            reply_markup=get_back_keyboard("admin_panel"),
-            parse_mode="HTML"
-        )
+        try:
+            await callback.message.edit_text(
+                "📦 Товары отсутствуют",
+                reply_markup=get_back_keyboard("admin_panel"),
+                parse_mode="HTML"
+            )
+        except TelegramBadRequest:
+            pass
         return
     
     buttons = []
@@ -764,11 +801,14 @@ async def manage_products(callback: CallbackQuery):
     
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")])
     
-    await callback.message.edit_text(
-        f"📦 <b>Управление товарами</b>\n\nВсего товаров: {len(products)}",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            f"📦 <b>Управление товарами</b>\n\nВсего товаров: {len(products)}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        pass
     await callback.answer()
 
 @router.callback_query(F.data.startswith("manageprod_"))
@@ -798,14 +838,17 @@ async def manage_product_detail(callback: CallbackQuery):
         [InlineKeyboardButton(text="🔙 Назад", callback_data="manage_products")]
     ]
     
-    await callback.message.edit_text(
-        f"📦 <b>{product['name']}</b>\n\n"
-        f"💰 Цена: {product['price']}₽\n"
-        f"📝 Описание: {product['description']}\n"
-        f"📊 Статус: {stock_text}",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            f"📦 <b>{product['name']}</b>\n\n"
+            f"💰 Цена: {product['price']}₽\n"
+            f"📝 Описание: {product['description']}\n"
+            f"📊 Статус: {stock_text}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        pass
     await callback.answer()
 
 @router.callback_query(F.data.startswith("toggle_stock_"))
@@ -815,10 +858,14 @@ async def toggle_stock(callback: CallbackQuery):
         return
     
     product_id = int(callback.data.split("_")[-1])
-    await db.toggle_product_stock(product_id)
+    success = await db.toggle_product_stock(product_id)
     
-    await callback.answer("✅ Статус изменен!", show_alert=False)
-    await manage_product_detail(callback)
+    if success:
+        await callback.answer("✅ Статус изменен!", show_alert=False)
+        # Обновляем информацию о товаре
+        await manage_product_detail(callback)
+    else:
+        await callback.answer("❌ Ошибка изменения статуса", show_alert=True)
 
 @router.callback_query(F.data.startswith("delete_product_"))
 async def delete_product(callback: CallbackQuery):
@@ -965,17 +1012,20 @@ async def main():
         await dp.start_polling(bot, skip_updates=True)
     finally:
         await on_shutdown()
+
 # ==================== ОБРАБОТКА ОШИБОК ====================
 
 @router.errors()
-async def errors_handler(update, exception):
-    """Отлов всех ошибок, включая 'message is not modified'"""
-    if "message is not modified" in str(exception):
-        logger.debug("Игнорируем 'message is not modified' (пользователь дважды нажал кнопку)")
-        return True  # Ошибка обработана
+async def errors_handler(event, exception):
+    """ИСПРАВЛЕННЫЙ: Отлов всех ошибок, включая 'message is not modified'"""
+    if isinstance(exception, TelegramBadRequest):
+        if "message is not modified" in str(exception):
+            logger.debug("Игнорируем 'message is not modified' (пользователь дважды нажал кнопку)")
+            return True
     
     logger.error(f"Необработанная ошибка: {exception}")
-    return False  # Ошибка не обработана
+    return True
+
 if __name__ == "__main__":
     try:
         asyncio.run(main())
