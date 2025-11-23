@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "id": 1,
+    "name": "Nike Skeleton Purple",
+    "description": "Хорошая модна обувь",
+    "price": 9999.0,
+    "category_id": 2,
+    "in_stock": 1,
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_30.jpg"
+  }
+]
