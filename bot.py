@@ -850,7 +850,48 @@ async def manage_product_detail(callback: CallbackQuery):
     except TelegramBadRequest:
         pass
     await callback.answer()
+# ==================== ДИАГНОСТИКА WEBAPP ====================
 
+@router.message(Command("debug_webapp"))
+async def cmd_debug_webapp(message: Message):
+    """Диагностика WebApp"""
+    debug_info = f"""
+🔍 <b>ДИАГНОСТИКА WEBAPP</b>
+
+🤖 <b>Бот:</b> @webtest1262_bot
+🌐 <b>WebApp URL:</b> {WEBAPP_URL}
+👤 <b>Admin ID:</b> {ADMIN_ID}
+📦 <b>Канал заказов:</b> {ORDER_CHANNEL_ID}
+
+📊 <b>Статистика:</b>
+├ Товаров в БД: {len(db.get_all_products())}
+├ Категорий в БД: {len(db.get_all_categories())}
+└ Заказов в БД: {len([row for row in db.get_connection().cursor().execute("SELECT id FROM orders").fetchall()])}
+
+🛠 <b>Проверки:</b>
+├ WebApp URL доступен: {'✅' if WEBAPP_URL.startswith('https://') else '❌'}
+├ Бот запущен: ✅
+├ API сервер работает: ✅
+└ Канал настроен: {'✅' if ORDER_CHANNEL_ID else '❌'}
+
+💡 <b>Что проверить:</b>
+1. WebApp URL в BotFather
+2. Права бота в группе
+3. .env файл
+4. GitHub Pages доступен
+"""
+    await message.answer(debug_info, parse_mode="HTML")
+
+@router.message(Command("check_url"))
+async def cmd_check_url(message: Message):
+    """Проверка доступности WebApp URL"""
+    import requests
+    try:
+        response = requests.get(WEBAPP_URL, timeout=10)
+        status = "✅ Доступен" if response.status_code == 200 else f"❌ Код: {response.status_code}"
+        await message.answer(f"🌐 WebApp URL: {WEBAPP_URL}\nСтатус: {status}")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка проверки URL: {e}")
 @router.callback_query(F.data.startswith("toggle_stock_"))
 async def toggle_stock(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
@@ -1018,6 +1059,30 @@ async def handle_web_app_data(message: Message):
     except Exception as e:
         print(f"❌ Общая ошибка: {e}")
         await message.answer("❌ Ошибка обработки заказа")
+@router.message()
+async def mega_debug_handler(message: Message):
+    """МЕГА-ОТЛАДОЧНЫЙ обработчик ВСЕХ сообщений"""
+    
+    # Логируем ВСЕ сообщения
+    print(f"\n🔴 MEGA_DEBUG: Получено сообщение!")
+    print(f"🔴 Тип: {message.content_type}")
+    print(f"🔴 От: {message.from_user.id} ({message.from_user.first_name})")
+    print(f"🔴 Текст: {message.text}")
+    print(f"🔴 Есть web_app_data: {hasattr(message, 'web_app_data')}")
+    
+    if hasattr(message, 'web_app_data') and message.web_app_data:
+        print(f"🚨🚨🚨 WEBAPP ДАННЫЕ ОБНАРУЖЕНЫ! 🚨🚨🚨")
+        print(f"🚨 Данные: {message.web_app_data}")
+        print(f"🚨 Data attribute: {message.web_app_data.data}")
+        
+        # Вызываем основной обработчик
+        await handle_web_app_data(message)
+    else:
+        print(f"🔴 Нет web_app_data, пропускаем...")
+        
+        # Обрабатываем команды как обычно
+        if message.text and message.text.startswith('/'):
+            await dp.feed_update(bot, message)
 @router.message(Command("test_order"))
 async def cmd_test_order(message: Message):
     """Тест создания заказа"""
