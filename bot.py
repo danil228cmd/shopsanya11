@@ -884,7 +884,7 @@ async def delete_product(callback: CallbackQuery):
         await callback.answer("❌ Товар не найден!", show_alert=True)
 
 # ==================== НАСТРОЙКИ КАНАЛА ====================
-ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID", "-1001234567890")  # Замените на ID вашего канала
+ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID", "-1003478155443")  # Замените на ID вашего канала
 
 # ==================== ОБРАБОТКА ЗАКАЗОВ ====================
 
