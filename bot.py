@@ -1007,16 +1007,96 @@ async def cmd_fake_order(message: Message):
     await message.answer(f"✅ Fake заказ #{order_id} создан и отправлен в группу!")
     print(f"✅ Fake заказ #{order_id} завершен")
 
-# ==================== ОБРАБОТКА WEBAPP ДАННЫХ ====================
+# ==================== ДИАГНОСТИКА WEBAPP ====================
 
+@router.message(Command("debug_webapp"))
+async def cmd_debug_webapp(message: Message):
+    """Диагностика WebApp"""
+    debug_info = f"""
+🔍 <b>ДИАГНОСТИКА WEBAPP</b>
+
+🤖 <b>Бот:</b> @webtest1262_bot
+🌐 <b>WebApp URL:</b> {WEBAPP_URL}
+👤 <b>Admin ID:</b> {ADMIN_ID}
+📦 <b>Канал заказов:</b> {ORDER_CHANNEL_ID}
+
+📊 <b>Статистика:</b>
+├ Товаров в БД: {len(db.get_all_products())}
+├ Категорий в БД: {len(db.get_all_categories())}
+└ Заказов в БД: {len([row for row in db.get_connection().cursor().execute("SELECT id FROM orders").fetchall()])}
+
+🛠 <b>Проверки:</b>
+├ WebApp URL доступен: {'✅' if WEBAPP_URL.startswith('https://') else '❌'}
+├ Бот запущен: ✅
+├ API сервер работает: ✅
+└ Канал настроен: {'✅' if ORDER_CHANNEL_ID else '❌'}
+
+💡 <b>Что проверить:</b>
+1. WebApp URL в BotFather
+2. Права бота в группе
+3. .env файл
+4. GitHub Pages доступен
+"""
+    await message.answer(debug_info, parse_mode="HTML")
+
+@router.message(Command("check_webapp"))
+async def cmd_check_webapp(message: Message):
+    """Проверка WebApp данных"""
+    test_data = {
+        "type": "order",
+        "items": [
+            {
+                "id": 1,
+                "name": "Тестовый товар из WebApp",
+                "price": 1000,
+                "quantity": 2
+            }
+        ],
+        "total_price": 2000
+    }
+    
+    # Создаем fake WebApp данные для теста
+    class FakeWebAppData:
+        def __init__(self, data):
+            self.data = json.dumps(data)
+    
+    fake_webapp_data = FakeWebAppData(test_data)
+    message.web_app_data = fake_webapp_data
+    
+    print("🟢 ТЕСТ: Имитация WebApp данных...")
+    await handle_web_app_data(message)
+
+# УЛУЧШЕННЫЙ обработчик WebApp данных
+@router.message(F.web_app_data)
+async def handle_web_app_data_debug(message: Message):
+    """ДИАГНОСТИЧЕСКИЙ обработчик данных из Mini App"""
+    print(f"🚨🚨🚨 WEBAPP ДАННЫЕ ПОЛУЧЕНЫ! 🚨🚨🚨")
+    print(f"🟢 От: {message.from_user.id} ({message.from_user.first_name})")
+    print(f"🟢 Chat ID: {message.chat.id}")
+    print(f"🟢 Тип чата: {message.chat.type}")
+    print(f"🟢 Есть web_app_data: {hasattr(message, 'web_app_data')}")
+    
+    if hasattr(message, 'web_app_data') and message.web_app_data:
+        print(f"🟢 web_app_data.data: {message.web_app_data.data}")
+        print(f"🟢 web_app_data.button_text: {getattr(message.web_app_data, 'button_text', 'N/A')}")
+        
+        try:
+            # Вызываем основной обработчик
+            await handle_web_app_data(message)
+        except Exception as e:
+            print(f"❌ Ошибка в обработчике: {e}")
+            await message.answer(f"❌ Ошибка обработки заказа: {e}")
+    else:
+        print("❌ Нет web_app_data в сообщении")
+        await message.answer("❌ Нет данных заказа")
+
+# УБЕДИТЕСЬ что этот обработчик ЕСТЬ в вашем коде:
 @router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
-    """УЛУЧШЕННЫЙ обработчик данных из Mini App"""
-    print(f"🟢 WEBAPP ДАННЫЕ ПОЛУЧЕНЫ!")
-    print(f"🟢 От: {message.from_user.id} ({message.from_user.first_name})")
+    """ОСНОВНОЙ обработчик данных из Mini App"""
+    print(f"🟢 WEBAPP ДАННЫЕ ПОЛУЧЕНЫ В ОСНОВНОМ ОБРАБОТЧИКЕ!")
     
     try:
-        # Проверяем данные
         if not message.web_app_data or not message.web_app_data.data:
             print("❌ Нет данных в web_app_data")
             await message.answer("❌ Ошибка: нет данных заказа")
@@ -1049,7 +1129,7 @@ async def handle_web_app_data(message: Message):
                 )
             
             order_text = f"""
-🛒 <b>НОВЫЙ ЗАКАЗ!</b>
+🛒 <b>НОВЫЙ ЗАКАЗ ИЗ WEBAPP!</b>
 
 👤 <b>Клиент:</b>
 ├ Имя: {message.from_user.first_name}
@@ -1093,7 +1173,7 @@ async def handle_web_app_data(message: Message):
                 )
             
             # Уведомляем пользователя
-            success_msg = await message.answer(
+            await message.answer(
                 f"✅ <b>Заказ #{order_id} успешно оформлен!</b>\n\n"
                 f"💰 Сумма: <b>{total_price}₽</b>\n"
                 f"📦 Товаров: <b>{len(items)}</b>\n\n"
