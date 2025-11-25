@@ -16,7 +16,7 @@ from typing import List, Optional, Tuple
 import json
 from datetime import datetime
 from aiogram.exceptions import TelegramBadRequest
-
+from aiogram.filters import CommandStart, Command
 # Загрузка переменных окружения
 def load_env():
     if os.path.exists('.env'):
