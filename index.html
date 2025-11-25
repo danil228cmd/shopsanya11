@@ -976,35 +976,35 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     // Обработчик оформления заказа
-    document.getElementById('checkoutBtn').onclick = () => {
-        if (cart.length === 0) return;
+document.getElementById('checkoutBtn').onclick = () => {
+    if (cart.length === 0) return;
 
-        const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-        const orderData = {
-            type: 'order',
-            items: cart.map(item => ({
-                id: item.id,
-                name: item.name,
-                price: item.price,
-                quantity: item.quantity
-            })),
-            total_price: totalPrice
-        };
+    const orderData = {
+        type: 'order',
+        items: cart.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity
+        })),
+        total_price: totalPrice
+    };
 
-        console.log('📦 Отправка заказа:', orderData);
+    console.log('📦 Отправка заказа:', orderData);
+    
+    // Проверяем доступность sendData
+    if (typeof tg.sendData !== 'function') {
+        console.error('❌ tg.sendData не является функцией!');
+        alert('❌ Ошибка: функция отправки недоступна');
+        return;
+    }
+    
+    try {
+        tg.sendData(JSON.stringify(orderData));
+        console.log('✅ Данные отправлены через sendData');
         
-        // Основной способ отправки
-        if (tg.sendData) {
-            tg.sendData(JSON.stringify(orderData));
-            console.log('✅ Данные отправлены через sendData');
-        } else {
-            console.log('❌ sendData не доступен');
-            // Альтернативный способ - показать ошибку
-            alert('❌ Ошибка отправки заказа. Попробуйте еще раз.');
-            return;
-        }
-
         // Очистка корзины
         cart = [];
         updateCartUI();
@@ -1020,7 +1020,12 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             alert('✅ Заказ оформлен! Администратор свяжется с вами.');
         }
-    };
+        
+    } catch (error) {
+        console.error('❌ Ошибка отправки:', error);
+        alert('❌ Ошибка отправки заказа: ' + error.message);
+    }
+};
 
     // Закрытие модальных окон
     document.getElementById('closeModal').onclick = () => {

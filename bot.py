@@ -914,47 +914,38 @@ async def cmd_test(message: Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
 @router.message(F.web_app_data)
+@router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
-    """Обработка данных из Mini App"""
+    """УПРОЩЕННЫЙ обработчик данных из Mini App"""
     try:
-        print(f"📦 Получены данные от пользователя {message.from_user.id}")
+        print(f"🟢 WEBAPP: Получены данные от {message.from_user.id}")
+        
+        # Проверяем, есть ли данные
+        if not message.web_app_data or not message.web_app_data.data:
+            print("❌ WEBAPP: Нет данных")
+            await message.answer("❌ Ошибка: нет данных заказа")
+            return
+            
         data = json.loads(message.web_app_data.data)
-        print(f"📦 Данные: {data}")
+        print(f"🟢 WEBAPP: JSON данные: {data}")
         
         if data.get('type') == 'order':
             items = data.get('items', [])
             total_price = data.get('total_price', 0)
             
+            print(f"🟢 WEBAPP: Обработка заказа. Товаров: {len(items)}, Сумма: {total_price}")
+            
             if not items:
                 await message.answer("❌ Ошибка: пустой заказ")
                 return
             
-            # Формируем детали заказа
-            order_details = []
-            for item in items:
-                item_total = item['price'] * item['quantity']
-                order_details.append(
-                    f"• {item['name']}\n"
-                    f"  💰 Цена: {item['price']}₽\n"
-                    f"  📦 Количество: {item['quantity']} шт.\n"
-                    f"  🧮 Сумма: {item_total}₽"
-                )
+            # Простая текстовая информация о заказе
+            order_info = f"Заказ от {message.from_user.first_name}\n"
+            order_info += f"Товаров: {len(items)}\n"
+            order_info += f"Сумма: {total_price}₽\n\n"
             
-            order_text = f"""
-🛒 <b>НОВЫЙ ЗАКАЗ!</b>
-
-👤 <b>Информация о клиенте:</b>
-├ Имя: {message.from_user.first_name}
-├ ID: {message.from_user.id}
-└ Username: @{message.from_user.username or 'не указан'}
-
-📦 <b>Состав заказа:</b>
-{chr(10).join(order_details)}
-
-💰 <b>ИТОГО: {total_price}₽</b>
-
-⏰ <b>Время заказа:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
-"""
+            for item in items:
+                order_info += f"{item['name']} - {item['quantity']}шт. = {item['price'] * item['quantity']}₽\n"
             
             # Создаем заказ в БД
             order_id = db.create_order(
@@ -964,46 +955,102 @@ async def handle_web_app_data(message: Message):
                 total_price=total_price
             )
             
-            order_text += f"\n\n🆔 <b>Заказ #{order_id}</b>"
+            order_info += f"\n🆔 Заказ #{order_id}"
             
-            # Отправляем в канал/группу
+            # Отправляем в группу
             try:
                 await bot.send_message(
                     chat_id=ORDER_CHANNEL_ID,
-                    text=order_text,
+                    text=f"🛒 НОВЫЙ ЗАКАЗ #{order_id}\n\n{order_info}",
                     parse_mode="HTML"
                 )
-                print(f"✅ Заказ #{order_id} отправлен в группу {ORDER_CHANNEL_ID}")
-                
-            except Exception as channel_error:
-                print(f"❌ Ошибка отправки в группу: {channel_error}")
-                # Отправляем администратору
+                print(f"✅ WEBAPP: Заказ #{order_id} отправлен в группу")
+            except Exception as e:
+                print(f"❌ WEBAPP: Ошибка отправки в группу: {e}")
                 await bot.send_message(
                     chat_id=ADMIN_ID,
-                    text=f"❌ Ошибка отправки заказа в группу:\n{channel_error}\n\n{order_text}",
-                    parse_mode="HTML"
+                    text=f"❌ Ошибка отправки заказа:\n{e}\n\n{order_info}"
                 )
             
             # Уведомляем пользователя
             await message.answer(
-                "✅ <b>Заказ успешно оформлен!</b>\n\n"
-                f"🆔 Номер заказа: <b>#{order_id}</b>\n"
-                f"💰 Сумма: <b>{total_price}₽</b>\n\n"
-                "📞 С вами свяжется наш менеджер в ближайшее время!\n\n"
-                "⏳ Обычно это занимает 5-15 минут.",
+                f"✅ <b>Заказ #{order_id} оформлен!</b>\n"
+                f"💰 Сумма: <b>{total_price}₽</b>\n"
+                f"📦 Товаров: <b>{len(items)}</b>\n\n"
+                "📞 С вами свяжутся в ближайшее время!",
                 parse_mode="HTML"
             )
+            print(f"✅ WEBAPP: Пользователь уведомлен о заказе #{order_id}")
+            
+        else:
+            print(f"❌ WEBAPP: Неизвестный тип данных: {data.get('type')}")
+            await message.answer("❌ Неизвестный тип данных")
             
     except json.JSONDecodeError as e:
-        print(f"❌ Ошибка парсинга JSON: {e}")
-        await message.answer("❌ Ошибка формата данных заказа")
+        print(f"❌ WEBAPP: Ошибка JSON: {e}")
+        await message.answer("❌ Ошибка формата данных")
     except Exception as e:
-        print(f"❌ Общая ошибка обработки заказа: {e}")
-        await message.answer(
-            "❌ <b>Произошла ошибка при оформлении заказа</b>\n\n"
-            "Пожалуйста, попробуйте еще раз или свяжитесь с поддержкой.",
+        print(f"❌ WEBAPP: Общая ошибка: {e}")
+        await message.answer("❌ Ошибка обработки заказа")
+@router.message(Command("test_order"))
+async def cmd_test_order(message: Message):
+    """Тест создания заказа"""
+    try:
+        # Тестовый заказ
+        order_id = db.create_order(
+            user_id=message.from_user.id,
+            username=message.from_user.username or 'test',
+            items=json.dumps([{"name": "Тестовый товар", "price": 1000, "quantity": 1}]),
+            total_price=1000
+        )
+        
+        # Пробуем отправить в группу
+        test_text = f"""
+🧪 <b>ТЕСТОВЫЙ ЗАКАЗ #{order_id}</b>
+
+👤 Пользователь: {message.from_user.first_name} (ID: {message.from_user.id})
+💰 Сумма: 1000₽
+⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
+
+✅ Проверка отправки в группу работает!
+"""
+        
+        await bot.send_message(
+            chat_id=ORDER_CHANNEL_ID,
+            text=test_text,
             parse_mode="HTML"
         )
+        
+        await message.answer(f"✅ Тестовый заказ #{order_id} создан и отправлен в группу")
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка теста: {e}")
+@router.message(Command("webapp_test"))
+async def cmd_webapp_test(message: Message):
+    """Тест WebApp данных"""
+    test_data = {
+        "type": "order",
+        "items": [
+            {
+                "id": 1,
+                "name": "Тестовый товар",
+                "price": 1000,
+                "quantity": 2
+            }
+        ],
+        "total_price": 2000
+    }
+    
+    # Создаем fake WebApp данные
+    class FakeWebAppData:
+        def __init__(self, data):
+            self.data = json.dumps(data)
+    
+    fake_webapp_data = FakeWebAppData(test_data)
+    message.web_app_data = fake_webapp_data
+    
+    # Вызываем обработчик
+    await handle_web_app_data(message)
 # ==================== API ДЛЯ MINI APP ====================
 
 from aiohttp import web
@@ -1098,36 +1145,3 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"❌ Критическая ошибка: {e}")
         raise
-@router.message(Command("test_order"))
-async def cmd_test_order(message: Message):
-    """Тест создания заказа"""
-    try:
-        # Тестовый заказ
-        order_id = db.create_order(
-            user_id=message.from_user.id,
-            username=message.from_user.username or 'test',
-            items=json.dumps([{"name": "Тестовый товар", "price": 1000, "quantity": 1}]),
-            total_price=1000
-        )
-        
-        # Пробуем отправить в группу
-        test_text = f"""
-🧪 <b>ТЕСТОВЫЙ ЗАКАЗ #{order_id}</b>
-
-👤 Пользователь: {message.from_user.first_name} (ID: {message.from_user.id})
-💰 Сумма: 1000₽
-⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
-
-✅ Проверка отправки в группу работает!
-"""
-        
-        await bot.send_message(
-            chat_id=ORDER_CHANNEL_ID,
-            text=test_text,
-            parse_mode="HTML"
-        )
-        
-        await message.answer(f"✅ Тестовый заказ #{order_id} создан и отправлен в группу")
-        
-    except Exception as e:
-        await message.answer(f"❌ Ошибка теста: {e}")
