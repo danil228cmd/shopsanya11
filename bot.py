@@ -899,7 +899,7 @@ async def cmd_get_id(message: Message):
 """
     await message.answer(info_text, parse_mode="HTML")
 # ==================== НАСТРОЙКИ КАНАЛА ====================
-ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID", "3478155443")  # Замените на ID вашего канала
+ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID", "-1003498561307")  # Замените на ID вашего канала
 
 # ==================== ОБРАБОТКА ЗАКАЗОВ ====================
 
