@@ -883,6 +883,9 @@ async def delete_product(callback: CallbackQuery):
     else:
         await callback.answer("❌ Товар не найден!", show_alert=True)
 
+# ==================== НАСТРОЙКИ КАНАЛА ====================
+ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID", "-1001234567890")  # Замените на ID вашего канала
+
 # ==================== ОБРАБОТКА ЗАКАЗОВ ====================
 
 @router.message(F.web_app_data)
@@ -895,24 +898,34 @@ async def handle_web_app_data(message: Message):
             items = data.get('items', [])
             total_price = data.get('total_price', 0)
             
+            # Формируем детали заказа
+            order_details = []
+            for item in items:
+                item_total = item['price'] * item['quantity']
+                order_details.append(
+                    f"• {item['name']}\n"
+                    f"  💰 Цена: {item['price']}₽\n"
+                    f"  📦 Количество: {item['quantity']} шт.\n"
+                    f"  🧮 Сумма: {item_total}₽"
+                )
+            
             order_text = f"""
 🛒 <b>НОВЫЙ ЗАКАЗ!</b>
 
-👤 <b>От:</b> {message.from_user.first_name}
-🆔 <b>User ID:</b> {message.from_user.id}
-📱 <b>Username:</b> @{message.from_user.username or 'нет'}
+👤 <b>Информация о клиенте:</b>
+├ Имя: {message.from_user.first_name}
+├ ID: {message.from_user.id}
+└ Username: @{message.from_user.username or 'не указан'}
 
-📦 <b>Товары:</b>
+📦 <b>Состав заказа:</b>
+{chr(10).join(order_details)}
+
+💰 <b>ИТОГО: {total_price}₽</b>
+
+⏰ <b>Время заказа:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
 """
             
-            for item in items:
-                order_text += f"\n• <b>{item['name']}</b>\n"
-                order_text += f"  Цена: {item['price']}₽\n"
-                order_text += f"  Количество: {item['quantity']} шт.\n"
-                order_text += f"  Сумма: {item['price'] * item['quantity']}₽\n"
-            
-            order_text += f"\n💰 <b>ИТОГО:</b> {total_price}₽"
-            
+            # Создаем заказ в БД
             order_id = db.create_order(
                 user_id=message.from_user.id,
                 username=message.from_user.username or '',
@@ -920,26 +933,40 @@ async def handle_web_app_data(message: Message):
                 total_price=total_price
             )
             
-            await bot.send_message(
-                chat_id=ADMIN_ID,
-                text=order_text + f"\n\n🆔 Заказ #{order_id}",
-                parse_mode="HTML"
-            )
+            # Отправляем в канал
+            try:
+                await bot.send_message(
+                    chat_id=ORDER_CHANNEL_ID,
+                    text=order_text + f"\n\n🆔 <b>Заказ #{order_id}</b>",
+                    parse_mode="HTML"
+                )
+                logger.info(f"✅ Заказ #{order_id} отправлен в канал")
+            except Exception as channel_error:
+                logger.error(f"❌ Ошибка отправки в канал: {channel_error}")
+                # Если не удалось отправить в канал, отправляем администратору
+                await bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=f"❌ Ошибка отправки заказа в канал:\n{channel_error}\n\n{order_text}",
+                    parse_mode="HTML"
+                )
             
+            # Уведомляем пользователя
             await message.answer(
-                "✅ <b>Заказ оформлен!</b>\n\n"
-                f"Номер заказа: <b>#{order_id}</b>\n\n"
-                "Администратор свяжется с вами в ближайшее время!",
+                "✅ <b>Заказ успешно оформлен!</b>\n\n"
+                f"🆔 Номер заказа: <b>#{order_id}</b>\n"
+                f"💰 Сумма: <b>{total_price}₽</b>\n\n"
+                "📞 С вами свяжется наш менеджер в ближайшее время для уточнения деталей!\n\n"
+                "⏳ Обычно это занимает 5-15 минут.",
                 parse_mode="HTML"
             )
             
     except Exception as e:
-        logger.error(f"Ошибка обработки web_app_data: {e}")
+        logger.error(f"❌ Ошибка обработки заказа: {e}")
         await message.answer(
-            "❌ Произошла ошибка при оформлении заказа. Попробуйте снова.",
+            "❌ <b>Произошла ошибка при оформлении заказа</b>\n\n"
+            "Пожалуйста, попробуйте еще раз или свяжитесь с поддержкой.",
             parse_mode="HTML"
         )
-
 # ==================== API ДЛЯ MINI APP ====================
 
 from aiohttp import web
