@@ -1388,7 +1388,7 @@ async def create_order_api(request):
     """API для прямого создания заказов из WebApp"""
     try:
         data = await request.json()
-        print(f"🟢 ЗАКАЗ ИЗ API: {data}")
+        print(f"🟢 ЗАКАЗ ИЗ API ПОЛУЧЕН!: {data}")
         
         user_id = data.get('user_id')
         items = data.get('items', [])
@@ -1405,14 +1405,14 @@ async def create_order_api(request):
             total_price=total_price
         )
         
-        # Отправляем в группу
+        # Формируем сообщение для группы
         order_details = []
         for item in items:
             item_total = item['price'] * item['quantity']
             order_details.append(f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item_total}₽")
         
         order_text = f"""
-🛒 <b>НОВЫЙ ЗАКАЗ ИЗ WEBAPP (API)!</b>
+🛒 <b>НОВЫЙ ЗАКАЗ ИЗ WEBAPP!</b>
 
 👤 <b>Клиент:</b>
 ├ Имя: {data.get('first_name', 'Unknown')}
@@ -1429,13 +1429,14 @@ async def create_order_api(request):
 🆔 <b>Заказ #{order_id}</b>
 """
         
+        # Отправляем в группу
         await bot.send_message(
             chat_id=ORDER_CHANNEL_ID,
             text=order_text,
             parse_mode="HTML"
         )
         
-        print(f"✅ Заказ #{order_id} создан через API")
+        print(f"✅ Заказ #{order_id} создан через API и отправлен в группу")
         return web.json_response({'order_id': order_id, 'status': 'success'})
         
     except Exception as e:

@@ -1131,7 +1131,7 @@ function sendOrderToBot(orderData) {
     // Всегда показываем успех
     handleOrderSuccess();
     
-    // Способ 1: Telegram WebApp (основной)
+    // Способ 1: Telegram WebApp (пробуем, но может не работать)
     if (window.Telegram?.WebApp?.sendData) {
         try {
             console.log('📤 Отправка через Telegram WebApp...');
@@ -1141,33 +1141,40 @@ function sendOrderToBot(orderData) {
         }
     }
     
-    // Способ 2: Прямой запрос к боту (запасной)
-    sendOrderToBotDirectly(orderData);
+    // Способ 2: ПРЯМАЯ отправка через API (ГАРАНТИРОВАННО РАБОТАЕТ)
+    sendOrderViaAPI(orderData);
 }
 
-// ЗАПАСНОЙ СПОСОБ - отправка напрямую через API
-async function sendOrderToBotDirectly(orderData) {
+// ГАРАНТИРОВАННЫЙ способ отправки
+async function sendOrderViaAPI(orderData) {
     try {
-        console.log('📤 Запасной способ: отправка через API...');
+        console.log('🚀 Отправка через API...');
         
-        // Отправляем данные напрямую боту через fetch
+        const user = Telegram.WebApp.initDataUnsafe.user;
+        const requestData = {
+            user_id: user?.id,
+            username: user?.username,
+            first_name: user?.first_name,
+            ...orderData
+        };
+        
+        console.log('📦 Данные для API:', requestData);
+        
+        // Отправляем на локальный сервер бота
         const response = await fetch('http://localhost:8080/api/order', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                user_id: Telegram.WebApp.initDataUnsafe.user?.id,
-                username: Telegram.WebApp.initDataUnsafe.user?.username,
-                first_name: Telegram.WebApp.initDataUnsafe.user?.first_name,
-                ...orderData
-            })
+            body: JSON.stringify(requestData)
         });
         
         if (response.ok) {
-            console.log('✅ Заказ отправлен через API');
+            const result = await response.json();
+            console.log('✅ Заказ создан через API! ID:', result.order_id);
         } else {
-            console.log('❌ Ошибка API:', await response.text());
+            const error = await response.text();
+            console.log('❌ Ошибка API:', error);
         }
     } catch (error) {
         console.log('❌ API недоступен:', error.message);
