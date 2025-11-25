@@ -1030,41 +1030,113 @@ async def cmd_debug_webapp(message: Message):
 ├ Бот запущен: ✅
 ├ API сервер работает: ✅
 └ Канал настроен: {'✅' if ORDER_CHANNEL_ID else '❌'}
-
-💡 <b>Что проверить:</b>
-1. WebApp URL в BotFather
-2. Права бота в группе
-3. .env файл
-4. GitHub Pages доступен
 """
     await message.answer(debug_info, parse_mode="HTML")
 
-@router.message(Command("check_webapp"))
-async def cmd_check_webapp(message: Message):
-    """Проверка WebApp данных"""
-    test_data = {
-        "type": "order",
-        "items": [
-            {
-                "id": 1,
-                "name": "Тестовый товар из WebApp",
-                "price": 1000,
-                "quantity": 2
-            }
-        ],
-        "total_price": 2000
-    }
+# ПРОСТОЙ обработчик WebApp данных - УДАЛИТЕ ВСЕ ДУБЛИ
+@router.message(F.web_app_data)
+async def handle_web_app_data_simple(message: Message):
+    """ПРОСТОЙ обработчик WebApp данных"""
+    print(f"🚨 WEBAPP ДАННЫЕ ПОЛУЧЕНЫ!")
+    print(f"🟢 От: {message.from_user.id} ({message.from_user.first_name})")
     
-    # Создаем fake WebApp данные для теста
-    class FakeWebAppData:
-        def __init__(self, data):
-            self.data = json.dumps(data)
-    
-    fake_webapp_data = FakeWebAppData(test_data)
-    message.web_app_data = fake_webapp_data
-    
-    print("🟢 ТЕСТ: Имитация WebApp данных...")
-    await handle_web_app_data(message)
+    try:
+        if not message.web_app_data or not message.web_app_data.data:
+            print("❌ Нет данных в web_app_data")
+            await message.answer("❌ Ошибка: нет данных заказа")
+            return
+        
+        data_str = message.web_app_data.data
+        print(f"🟢 Сырые данные: {data_str}")
+        
+        # Парсим JSON
+        data = json.loads(data_str)
+        print(f"🟢 JSON данные: {data}")
+        
+        if data.get('type') == 'order':
+            items = data.get('items', [])
+            total_price = data.get('total_price', 0)
+            
+            print(f"🟢 ЗАКАЗ ОБНАРУЖЕН!")
+            print(f"🟢 Товаров: {len(items)}, Сумма: {total_price}₽")
+            
+            if not items:
+                await message.answer("❌ Ошибка: пустой заказ")
+                return
+            
+            # Формируем детали заказа
+            order_details = []
+            for item in items:
+                item_total = item['price'] * item['quantity']
+                order_details.append(
+                    f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item_total}₽"
+                )
+            
+            order_text = f"""
+🛒 <b>НОВЫЙ ЗАКАЗ ИЗ WEBAPP!</b>
+
+👤 <b>Клиент:</b>
+├ Имя: {message.from_user.first_name}
+├ ID: {message.from_user.id}
+└ @{message.from_user.username or 'нет username'}
+
+📦 <b>Заказ:</b>
+{chr(10).join(order_details)}
+
+💰 <b>ИТОГО: {total_price}₽</b>
+
+⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
+"""
+            
+            # Создаем заказ в БД
+            order_id = db.create_order(
+                user_id=message.from_user.id,
+                username=message.from_user.username or '',
+                items=json.dumps(items, ensure_ascii=False),
+                total_price=total_price
+            )
+            
+            order_text += f"\n\n🆔 <b>Заказ #{order_id}</b>"
+            
+            print(f"🟢 Заказ #{order_id} создан в БД")
+            
+            # Отправляем в группу
+            try:
+                await bot.send_message(
+                    chat_id=ORDER_CHANNEL_ID,
+                    text=order_text,
+                    parse_mode="HTML"
+                )
+                print(f"✅ Заказ #{order_id} отправлен в группу {ORDER_CHANNEL_ID}")
+                
+            except Exception as channel_error:
+                print(f"❌ Ошибка отправки в группу: {channel_error}")
+                await bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=f"❌ Ошибка отправки заказа:\n{channel_error}"
+                )
+            
+            # Уведомляем пользователя
+            await message.answer(
+                f"✅ <b>Заказ #{order_id} успешно оформлен!</b>\n\n"
+                f"💰 Сумма: <b>{total_price}₽</b>\n"
+                f"📦 Товаров: <b>{len(items)}</b>\n\n"
+                "📞 С вами свяжутся в течение 5-15 минут!",
+                parse_mode="HTML"
+            )
+            
+            print(f"✅ Пользователь уведомлен о заказе #{order_id}")
+            
+        else:
+            print(f"❌ Неизвестный тип данных: {data.get('type')}")
+            await message.answer("❌ Неизвестный тип данных")
+            
+    except json.JSONDecodeError as e:
+        print(f"❌ Ошибка JSON: {e}")
+        await message.answer("❌ Ошибка формата данных заказа")
+    except Exception as e:
+        print(f"❌ Общая ошибка: {e}")
+        await message.answer("❌ Ошибка обработки заказа")
 
 # УЛУЧШЕННЫЙ обработчик WebApp данных
 @router.message(F.web_app_data)
