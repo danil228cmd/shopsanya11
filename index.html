@@ -1103,7 +1103,103 @@
             
             renderProducts(activeCategory, query);
         };
+            // Функция отправки заказа в группу
+    async function sendOrderToGroup(orderData) {
+        const BOT_TOKEN = '8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc'; // Замените на токен вашего бота
+        const GROUP_ID = '-1003498561307'; // ID группы из чата
 
+        try {
+            // Формируем текст заказа
+            let orderText = `🛒 *НОВЫЙ ЗАКАЗ*\\n\\n`;
+            orderText += `*Товары:*\\n`;
+            
+            orderData.items.forEach(item => {
+                orderText += `• ${item.name} - ${item.quantity} × ${item.price}₽ = ${item.quantity * item.price}₽\\n`;
+            });
+            
+            orderText += `\\n*Итого:* ${orderData.total_price}₽`;
+            orderText += `\\n*Время:* ${new Date().toLocaleString('ru-RU')}`;
+
+            // Отправляем сообщение в группу через Bot API
+            const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    chat_id: GROUP_ID,
+                    text: orderText,
+                    parse_mode: 'MarkdownV2'
+                })
+            });
+
+            const result = await response.json();
+            console.log('Заказ отправлен в группу:', result);
+
+            return result.ok;
+
+        } catch (error) {
+            console.error('Ошибка отправки заказа:', error);
+            return false;
+        }
+    }
+
+    // Обновите функцию оформления заказа
+    document.getElementById('checkoutBtn').onclick = async () => {
+        if (cart.length === 0) return;
+
+        const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+        const orderData = {
+            type: 'order',
+            items: cart.map(item => ({
+                id: item.id,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity
+            })),
+            total_price: totalPrice,
+            timestamp: new Date().toISOString()
+        };
+
+        // Показываем уведомление о обработке
+        tg.showPopup({
+            title: 'Оформление заказа',
+            message: 'Отправляем заказ...',
+            buttons: []
+        });
+
+        try {
+            // 1. Отправляем данные в Telegram WebApp
+            tg.sendData(JSON.stringify(orderData));
+            
+            // 2. Отправляем заказ в группу
+            const sentToGroup = await sendOrderToGroup(orderData);
+            
+            if (sentToGroup) {
+                // Очищаем корзину
+                cart = [];
+                updateCartUI();
+                document.getElementById('cartModal').classList.remove('active');
+                
+                tg.showPopup({
+                    title: '✅ Заказ оформлен!',
+                    message: 'Администратор свяжется с вами в ближайшее время.',
+                    buttons: [{ type: 'ok' }]
+                });
+            } else {
+                throw new Error('Не удалось отправить заказ в группу');
+            }
+
+        } catch (error) {
+            console.error('Ошибка оформления заказа:', error);
+            tg.showPopup({
+                title: '❌ Ошибка',
+                message: 'Не удалось оформить заказ. Попробуйте еще раз.',
+                buttons: [{ type: 'ok' }]
+            });
+        }
+    };
         loadData();
     </script>
 </body>
