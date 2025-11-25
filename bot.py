@@ -917,11 +917,17 @@ async def cmd_test(message: Message):
 async def handle_web_app_data(message: Message):
     """Обработка данных из Mini App"""
     try:
+        print(f"📦 Получены данные от пользователя {message.from_user.id}")
         data = json.loads(message.web_app_data.data)
+        print(f"📦 Данные: {data}")
         
         if data.get('type') == 'order':
             items = data.get('items', [])
             total_price = data.get('total_price', 0)
+            
+            if not items:
+                await message.answer("❌ Ошибка: пустой заказ")
+                return
             
             # Формируем детали заказа
             order_details = []
@@ -958,20 +964,23 @@ async def handle_web_app_data(message: Message):
                 total_price=total_price
             )
             
-            # Отправляем в канал
+            order_text += f"\n\n🆔 <b>Заказ #{order_id}</b>"
+            
+            # Отправляем в канал/группу
             try:
                 await bot.send_message(
                     chat_id=ORDER_CHANNEL_ID,
-                    text=order_text + f"\n\n🆔 <b>Заказ #{order_id}</b>",
+                    text=order_text,
                     parse_mode="HTML"
                 )
-                logger.info(f"✅ Заказ #{order_id} отправлен в канал")
+                print(f"✅ Заказ #{order_id} отправлен в группу {ORDER_CHANNEL_ID}")
+                
             except Exception as channel_error:
-                logger.error(f"❌ Ошибка отправки в канал: {channel_error}")
-                # Если не удалось отправить в канал, отправляем администратору
+                print(f"❌ Ошибка отправки в группу: {channel_error}")
+                # Отправляем администратору
                 await bot.send_message(
                     chat_id=ADMIN_ID,
-                    text=f"❌ Ошибка отправки заказа в канал:\n{channel_error}\n\n{order_text}",
+                    text=f"❌ Ошибка отправки заказа в группу:\n{channel_error}\n\n{order_text}",
                     parse_mode="HTML"
                 )
             
@@ -980,13 +989,16 @@ async def handle_web_app_data(message: Message):
                 "✅ <b>Заказ успешно оформлен!</b>\n\n"
                 f"🆔 Номер заказа: <b>#{order_id}</b>\n"
                 f"💰 Сумма: <b>{total_price}₽</b>\n\n"
-                "📞 С вами свяжется наш менеджер в ближайшее время для уточнения деталей!\n\n"
+                "📞 С вами свяжется наш менеджер в ближайшее время!\n\n"
                 "⏳ Обычно это занимает 5-15 минут.",
                 parse_mode="HTML"
             )
             
+    except json.JSONDecodeError as e:
+        print(f"❌ Ошибка парсинга JSON: {e}")
+        await message.answer("❌ Ошибка формата данных заказа")
     except Exception as e:
-        logger.error(f"❌ Ошибка обработки заказа: {e}")
+        print(f"❌ Общая ошибка обработки заказа: {e}")
         await message.answer(
             "❌ <b>Произошла ошибка при оформлении заказа</b>\n\n"
             "Пожалуйста, попробуйте еще раз или свяжитесь с поддержкой.",
@@ -1086,3 +1098,26 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"❌ Критическая ошибка: {e}")
         raise
+@router.message(Command("test_order"))
+async def cmd_test_order(message: Message):
+    """Тест создания заказа"""
+    try:
+        # Тестовый заказ
+        order_id = db.create_order(
+            user_id=message.from_user.id,
+            username=message.from_user.username or 'test',
+            items=json.dumps([{"name": "Тестовый товар", "price": 1000, "quantity": 1}]),
+            total_price=1000
+        )
+        
+        # Пробуем отправить в группу
+        await bot.send_message(
+            chat_id=ORDER_CHANNEL_ID,
+            text=f"🧪 ТЕСТОВЫЙ ЗАКАЗ #{order_id}\nПроверка отправки в группу",
+            parse_mode="HTML"
+        )
+        
+        await message.answer(f"✅ Тестовый заказ #{order_id} создан и отправлен в группу")
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка теста: {e}")

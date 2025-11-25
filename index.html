@@ -653,7 +653,7 @@
         </div>
     </div>
 
-    <script>
+    <script src="https://telegram.org/js/telegram-web-app.js">
         // Инициализация Telegram WebApp
         const tg = window.Telegram.WebApp;
         tg.expand();
@@ -1059,21 +1059,34 @@
                 total_price: totalPrice
             };
 
-            tg.sendData(JSON.stringify(orderData));
+            console.log('📦 Отправка заказа:', orderData);
             
+            // Основной способ отправки
+            if (tg.sendData) {
+                tg.sendData(JSON.stringify(orderData));
+                console.log('✅ Данные отправлены через sendData');
+            } else {
+                console.log('❌ sendData не доступен');
+            }
+
+            // Очистка корзины
             cart = [];
             updateCartUI();
             document.getElementById('cartModal').classList.remove('active');
-            
+
+            // Показываем уведомление
             if (tg.showPopup) {
                 tg.showPopup({
-                    title: 'Заказ оформлен!',
+                    title: '✅ Заказ оформлен!',
                     message: 'Администратор свяжется с вами в ближайшее время.',
                     buttons: [{ type: 'ok' }]
                 });
-            } else {
-                alert('✅ Заказ оформлен! Администратор свяжется с вами.');
             }
+            
+            // Альтернативное уведомление
+            setTimeout(() => {
+                alert('✅ Заказ оформлен! Администратор свяжется с вами.');
+            }, 1000);
         };
 
         document.getElementById('closeModal').onclick = () => {
