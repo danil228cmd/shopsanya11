@@ -653,506 +653,496 @@
         </div>
     </div>
 
-    <script src="https://telegram.org/js/telegram-web-app.js">
-        // Инициализация Telegram WebApp
-        const tg = window.Telegram.WebApp;
-        tg.expand();
-        tg.enableClosingConfirmation();
+    <script>
+// Инициализация Telegram WebApp
+const tg = window.Telegram.WebApp;
+tg.expand();
+tg.enableClosingConfirmation();
 
-        // Данные
-        let products = [];
-        let categories = [];
-        let cart = [];
-        let currentProduct = null;
-        let isUsingDemoData = false;
+// Данные
+let products = [];
+let categories = [];
+let cart = [];
+let currentProduct = null;
+let isUsingDemoData = false;
 
-        // Конфигурация API
-        const API_CONFIG = {
-            LOCAL_SERVER: 'http://localhost:8080',
-            GITHUB_PAGES: 'https://danil228cmd.github.io/shopsanya11/',
-            TIMEOUT: 1000
-        };
-
-        // Загрузка данных
-        async function loadData() {
-            showLoader();
-            
-            try {
-                console.log('📄 Начинаем загрузку данных...');
-                
-                const localData = await tryLoadFromSource(API_CONFIG.LOCAL_SERVER, 'локальный сервер');
-                if (localData) {
-                    products = localData.products;
-                    categories = localData.categories;
-                    console.log('✅ Данные загружены с локального сервера');
-                    renderCategories();
-                    renderProducts();
-                    return;
-                }
-                
-                console.log('📄 Локальный сервер недоступен, пробуем GitHub Pages...');
-                const githubData = await tryLoadFromGitHub();
-                if (githubData) {
-                    products = githubData.products;
-                    categories = githubData.categories;
-                    console.log('✅ Данные загружены с GitHub Pages');
-                    renderCategories();
-                    renderProducts();
-                    return;
-                }
-                
-                console.log('📄 Все источники недоступны, используем демо-данные');
-                useDemoData();
-                
-            } catch (error) {
-                console.error('❌ Критическая ошибка:', error);
-                useDemoData();
-            }
-        }
-
-        async function tryLoadFromSource(baseUrl, sourceName) {
-            try {
-                console.log(`📄 Пробуем ${sourceName}...`);
-                
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.TIMEOUT);
-                
-                const [productsRes, categoriesRes] = await Promise.all([
-                    fetch(`${baseUrl}/api/products`, { signal: controller.signal }),
-                    fetch(`${baseUrl}/api/categories`, { signal: controller.signal })
-                ]);
-                
-                clearTimeout(timeoutId);
-                
-                if (productsRes.ok && categoriesRes.ok) {
-                    const products = await productsRes.json();
-                    const categories = await categoriesRes.json();
-                    return { products, categories };
-                } else {
-                    throw new Error(`HTTP error: ${productsRes.status}`);
-                }
-            } catch (error) {
-                console.log(`❌ ${sourceName} недоступен:`, error.message);
-                return null;
-            }
-        }
-
-        async function tryLoadFromGitHub() {
-            try {
-                const [productsRes, categoriesRes] = await Promise.all([
-                    fetch(`${API_CONFIG.GITHUB_PAGES}/api/products.json`),
-                    fetch(`${API_CONFIG.GITHUB_PAGES}/api/categories.json`)
-                ]);
-                
-                if (productsRes.ok && categoriesRes.ok) {
-                    const products = await productsRes.json();
-                    const categories = await categoriesRes.json();
-                    return { products, categories };
-                } else {
-                    throw new Error('GitHub Pages недоступен');
-                }
-            } catch (error) {
-                console.log('❌ GitHub Pages недоступен:', error.message);
-                return null;
-            }
-        }
-
-        function useDemoData() {
-            isUsingDemoData = true;
-            
-            products = [
-                {
-                    id: 1,
-                    name: "iPhone 15 Pro",
-                    price: 99990,
-                    category_id: 1,
-                    description: "Флагманский смартфон Apple с динамическим островом",
-                    photo_url: null,
-                    in_stock: 1
-                },
-                {
-                    id: 2,
-                    name: "Samsung Galaxy S24",
-                    price: 79990,
-                    category_id: 1,
-                    description: "Мощный Android смартфон с камерой 200MP",
-                    photo_url: null,
-                    in_stock: 1
-                },
-                {
-                    id: 3,
-                    name: "AirPods Pro",
-                    price: 24990,
-                    category_id: 2,
-                    description: "Беспроводные наушники с шумоподавлением",
-                    photo_url: null,
-                    in_stock: 0
-                },
-                {
-                    id: 4,
-                    name: "MacBook Air M3",
-                    price: 129990,
-                    category_id: 3,
-                    description: "Легкий и мощный ноутбук от Apple",
-                    photo_url: null,
-                    in_stock: 1
-                }
-            ];
-            
-            categories = [
-                { id: 1, name: "Смартфоны", parent_id: null },
-                { id: 2, name: "Наушники", parent_id: null },
-                { id: 3, name: "Ноутбуки", parent_id: null }
-            ];
-            
-            console.log('✅ Загружены демо-данные');
-            renderCategories();
-            renderProducts();
-            showDemoWarning();
-        }
-
-        function showDemoWarning() {
-            const warning = document.createElement('div');
-            warning.className = 'demo-warning';
-            warning.innerHTML = '⚠️ Используются демо-данные. Для загрузки реальных товаров убедитесь, что бот запущен.';
-            document.querySelector('.products-container').insertBefore(warning, document.getElementById('productsGrid'));
-        }
-
-        function showLoader() {
-            document.getElementById('productsGrid').innerHTML = '<div class="loader">Загрузка товаров...</div>';
-        }
-
-        function renderCategories() {
-            const filtersContainer = document.getElementById('filters');
-            filtersContainer.innerHTML = '';
-
-            const allBtn = document.createElement('button');
-            allBtn.className = 'filter-btn active';
-            allBtn.textContent = 'Все';
-            allBtn.dataset.category = 'all';
-            allBtn.onclick = () => filterByCategory('all');
-            filtersContainer.appendChild(allBtn);
-
-            const rootCategories = categories.filter(cat => !cat.parent_id);
-            
-            rootCategories.forEach(category => {
-                const btn = document.createElement('button');
-                btn.className = 'filter-btn';
-                btn.textContent = category.name;
-                btn.dataset.category = category.id;
-                btn.onclick = () => filterByCategory(category.id);
-                filtersContainer.appendChild(btn);
-            });
-        }
-
-        function renderProducts(categoryId = null, searchQuery = '') {
-            const grid = document.getElementById('productsGrid');
-            
-            let filtered = products;
-
-            if (categoryId && categoryId !== 'all') {
-                const subcategories = categories.filter(cat => cat.parent_id == categoryId).map(cat => cat.id);
-                const categoryIds = [parseInt(categoryId), ...subcategories];
-                filtered = filtered.filter(p => categoryIds.includes(p.category_id));
-            }
-
-            if (searchQuery) {
-                filtered = filtered.filter(p => 
-                    p.name.toLowerCase().includes(searchQuery.toLowerCase())
-                );
-            }
-
-            if (filtered.length === 0) {
-                grid.innerHTML = '<div class="empty-message">Товары не найдены</div>';
-                return;
-            }
-
-            grid.innerHTML = filtered.map(product => `
-                <div class="product-card" onclick="openProductModal(${product.id})">
-                    <div class="product-image">
-                        ${product.photo_url ? 
-                            `<img src="${product.photo_url}" alt="${product.name}" onerror="this.style.display='none'; this.parentNode.innerHTML='📦';">` : 
-                            '📦'
-                        }
-                    </div>
-                    <div class="product-info">
-                        <div class="product-name">${product.name}</div>
-                        <div class="product-price">${product.price}₽</div>
-                        ${product.in_stock ? 
-                            '<div class="stock-indicator in-stock">✅ В наличии</div>' : 
-                            '<div class="stock-indicator out-of-stock">❌ Нет в наличии</div>'
-                        }
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function filterByCategory(categoryId) {
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            
-            const activeBtn = document.querySelector(`.filter-btn[data-category="${categoryId}"]`);
-            if (activeBtn) {
-                activeBtn.classList.add('active');
-            } else {
-                document.querySelector('.filter-btn[data-category="all"]').classList.add('active');
-            }
-
-            const searchQuery = document.getElementById('searchInput').value;
-            renderProducts(categoryId === 'all' ? null : categoryId, searchQuery);
-        }
-
-        function openProductModal(productId) {
-            currentProduct = products.find(p => p.id === productId);
-            if (!currentProduct) return;
-
-            const modal = document.getElementById('productModal');
-            const modalImage = document.getElementById('modalImage');
-            
-            if (currentProduct.photo_url) {
-                modalImage.innerHTML = `<img src="${currentProduct.photo_url}" alt="${currentProduct.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\\'width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 80px;\\'>📦</div>';">`;
-            } else {
-                modalImage.innerHTML = '<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 80px;">📦</div>';
-            }
-
-            document.getElementById('modalName').textContent = currentProduct.name;
-            document.getElementById('modalPrice').textContent = currentProduct.price + '₽';
-            
-            const stockIndicator = document.createElement('div');
-            stockIndicator.className = `stock-indicator ${currentProduct.in_stock ? 'in-stock' : 'out-of-stock'}`;
-            stockIndicator.textContent = currentProduct.in_stock ? '✅ В наличии' : '❌ Нет в наличии';
-            
-            const modalBody = document.querySelector('.modal-body');
-            const existingIndicator = modalBody.querySelector('.stock-indicator');
-            if (existingIndicator) {
-                existingIndicator.remove();
-            }
-            modalBody.insertBefore(stockIndicator, document.getElementById('modalDescription'));
-            
-            document.getElementById('modalDescription').textContent = currentProduct.description;
-
-            modal.classList.add('active');
-            
-            const addBtn = document.getElementById('addToCartBtn');
-            addBtn.disabled = !currentProduct.in_stock;
-            addBtn.textContent = currentProduct.in_stock ? 'Добавить в корзину' : 'Нет в наличии';
-        }
-
-        document.getElementById('addToCartBtn').onclick = () => {
-            if (currentProduct && currentProduct.in_stock) {
-                addToCart(currentProduct, 1);
-                document.getElementById('productModal').classList.remove('active');
-                
-                if (tg.HapticFeedback) {
-                    tg.HapticFeedback.notificationOccurred('success');
-                }
-            }
-        };
-
-        function addToCart(product, quantity) {
-            const existingItem = cart.find(item => item.id === product.id);
-            
-            if (existingItem) {
-                existingItem.quantity += quantity;
-            } else {
-                cart.push({
-                    id: product.id,
-                    name: product.name,
-                    price: product.price,
-                    photo_url: product.photo_url,
-                    quantity: quantity
-                });
-            }
-
-            updateCartUI();
-        }
-
-        function updateCartUI() {
-            const cartButton = document.getElementById('cartButton');
-            const cartBadge = document.getElementById('cartBadge');
-            
-            const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-            
-            if (totalItems > 0) {
-                cartButton.style.display = 'flex';
-                cartBadge.textContent = totalItems;
-            } else {
-                cartButton.style.display = 'none';
-            }
-        }
-
-        document.getElementById('cartButton').onclick = () => {
-            renderCart();
-            document.getElementById('cartModal').classList.add('active');
-        };
-
-        function renderCart() {
-            const cartItems = document.getElementById('cartItems');
-            const cartTotal = document.getElementById('cartTotal');
-            
-            if (cart.length === 0) {
-                cartItems.innerHTML = '<div class="empty-message">Корзина пуста</div>';
-                cartTotal.style.display = 'none';
-                return;
-            }
-
-            cartItems.innerHTML = cart.map(item => `
-                <div class="cart-item">
-                    <div class="cart-item-image">
-                        ${item.photo_url ? 
-                            `<img src="${item.photo_url}" alt="${item.name}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\\'width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 30px;\\'>📦</div>';">` : 
-                            '<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 30px;">📦</div>'
-                        }
-                    </div>
-                    <div class="cart-item-info">
-                        <div class="cart-item-name">${item.name}</div>
-                        <div class="cart-item-price">${item.price}₽ × ${item.quantity} = ${item.price * item.quantity}₽</div>
-                        <div class="cart-item-controls">
-                            <button class="cart-item-btn" onclick="updateCartQuantity(${item.id}, -1)">−</button>
-                            <span class="cart-item-quantity">${item.quantity}</span>
-                            <button class="cart-item-btn" onclick="updateCartQuantity(${item.id}, 1)">+</button>
-                            <button class="cart-item-btn" onclick="removeFromCart(${item.id})" style="margin-left: auto; color: #ff3b30; border-color: #ff3b30;">🗑</button>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-
-            const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            document.getElementById('totalPrice').textContent = totalPrice + '₽';
-            cartTotal.style.display = 'block';
-        }
-
-        function updateCartQuantity(productId, delta) {
-            const item = cart.find(i => i.id === productId);
-            if (!item) return;
-
-            item.quantity += delta;
-
-            if (item.quantity <= 0) {
-                removeFromCart(productId);
-            } else {
-                renderCart();
-                updateCartUI();
-            }
-        }
-
-        function removeFromCart(productId) {
-            cart = cart.filter(i => i.id !== productId);
-            renderCart();
-            updateCartUI();
-        }
-
-        document.getElementById('checkoutBtn').onclick = () => {
-            if (cart.length === 0) return;
-
-            const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-
-            const orderData = {
-                type: 'order',
-                items: cart.map(item => ({
-                    id: item.id,
-                    name: item.name,
-                    price: item.price,
-                    quantity: item.quantity
-                })),
-                total_price: totalPrice
-            };
-
-            console.log('📦 Отправка заказа:', orderData);
-            
-            // Основной способ отправки
-            if (tg.sendData) {
-                tg.sendData(JSON.stringify(orderData));
-                console.log('✅ Данные отправлены через sendData');
-            } else {
-                console.log('❌ sendData не доступен');
-            }
-
-            // Очистка корзины
-            cart = [];
-            updateCartUI();
-            document.getElementById('cartModal').classList.remove('active');
-
-            // Показываем уведомление
-            if (tg.showPopup) {
-                tg.showPopup({
-                    title: '✅ Заказ оформлен!',
-                    message: 'Администратор свяжется с вами в ближайшее время.',
-                    buttons: [{ type: 'ok' }]
-                });
-            }
-            
-            // Альтернативное уведомление
-            setTimeout(() => {
-                alert('✅ Заказ оформлен! Администратор свяжется с вами.');
-            }, 1000);
-        };
-
-        document.getElementById('closeModal').onclick = () => {
-            document.getElementById('productModal').classList.remove('active');
-        };
-
-        document.getElementById('closeCartModal').onclick = () => {
-            document.getElementById('cartModal').classList.remove('active');
-        };
-
-        document.querySelectorAll('.modal').forEach(modal => {
-            modal.onclick = (e) => {
-                if (e.target === modal) {
-                    modal.classList.remove('active');
-                }
-            };
-        });
-
-        document.getElementById('searchInput').oninput = (e) => {
-            const query = e.target.value;
-            
-            let activeCategory = null;
-            const activeBtn = document.querySelector('.filter-btn.active');
-            if (activeBtn && activeBtn.dataset.category !== 'all') {
-                activeCategory = activeBtn.dataset.category;
-            }
-            
-            renderProducts(activeCategory, query);
-        };
- 
-
-document.getElementById('checkoutBtn').onclick = () => {
-    if (cart.length === 0) return;
-
-    const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-
-    const orderData = {
-        type: 'order',
-        items: cart.map(item => ({
-            id: item.id,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity
-        })),
-        total_price: totalPrice
-    };
-
-    // ✅ Единственный правильный способ отправки
-    tg.sendData(JSON.stringify(orderData));
-
-    cart = [];
-    updateCartUI();
-    document.getElementById('cartModal').classList.remove('active');
-
-    if (tg.showPopup) {
-        tg.showPopup({
-            title: '✅ Заказ оформлен!',
-            message: 'Администратор свяжется с вами в ближайшее время.',
-            buttons: [{ type: 'ok' }]
-        });
-    } else {
-        alert('✅ Заказ оформлен! Администратор свяжется с вами.');
-    }
+// Конфигурация API
+const API_CONFIG = {
+    LOCAL_SERVER: 'http://localhost:8080',
+    GITHUB_PAGES: 'https://danil228cmd.github.io/shopsanya11',
+    TIMEOUT: 5000  // Увеличил таймаут
 };
 
-        loadData();
+// Загрузка данных
+async function loadData() {
+    showLoader();
+    
+    try {
+        console.log('📄 Начинаем загрузку данных...');
+        
+        // Пробуем локальный сервер
+        const localData = await tryLoadFromSource(API_CONFIG.LOCAL_SERVER, 'локальный сервер');
+        if (localData) {
+            products = localData.products;
+            categories = localData.categories;
+            console.log('✅ Данные загружены с локального сервера');
+            renderCategories();
+            renderProducts();
+            return;
+        }
+        
+        console.log('📄 Локальный сервер недоступен, пробуем GitHub Pages...');
+        // Пробуем GitHub Pages
+        const githubData = await tryLoadFromGitHub();
+        if (githubData) {
+            products = githubData.products;
+            categories = githubData.categories;
+            console.log('✅ Данные загружены с GitHub Pages');
+            renderCategories();
+            renderProducts();
+            return;
+        }
+        
+        console.log('📄 Все источники недоступны, используем демо-данные');
+        useDemoData();
+        
+    } catch (error) {
+        console.error('❌ Критическая ошибка:', error);
+        useDemoData();
+    }
+}
+
+async function tryLoadFromSource(baseUrl, sourceName) {
+    try {
+        console.log(`📄 Пробуем ${sourceName}...`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.TIMEOUT);
+        
+        const productsResponse = await fetch(`${baseUrl}/api/products`, { 
+            signal: controller.signal,
+            mode: 'cors'
+        });
+        
+        const categoriesResponse = await fetch(`${baseUrl}/api/categories`, { 
+            signal: controller.signal,
+            mode: 'cors'
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (productsResponse.ok && categoriesResponse.ok) {
+            const products = await productsResponse.json();
+            const categories = await categoriesResponse.json();
+            console.log(`✅ ${sourceName}: загружено ${products.length} товаров, ${categories.length} категорий`);
+            return { products, categories };
+        } else {
+            throw new Error(`HTTP error: ${productsResponse.status}`);
+        }
+    } catch (error) {
+        console.log(`❌ ${sourceName} недоступен:`, error.message);
+        return null;
+    }
+}
+
+async function tryLoadFromGitHub() {
+    try {
+        console.log('📄 Пробуем GitHub Pages...');
+        
+        const productsUrl = `${API_CONFIG.GITHUB_PAGES}/api/products.json`;
+        const categoriesUrl = `${API_CONFIG.GITHUB_PAGES}/api/categories.json`;
+        
+        console.log('📄 URLs:', { productsUrl, categoriesUrl });
+        
+        const [productsRes, categoriesRes] = await Promise.all([
+            fetch(productsUrl, { cache: 'no-cache' }),
+            fetch(categoriesUrl, { cache: 'no-cache' })
+        ]);
+        
+        if (productsRes.ok && categoriesRes.ok) {
+            const products = await productsRes.json();
+            const categories = await categoriesRes.json();
+            console.log(`✅ GitHub Pages: загружено ${products.length} товаров, ${categories.length} категорий`);
+            return { products, categories };
+        } else {
+            throw new Error(`GitHub Pages error: ${productsRes.status}`);
+        }
+    } catch (error) {
+        console.log('❌ GitHub Pages недоступен:', error.message);
+        return null;
+    }
+}
+
+function useDemoData() {
+    isUsingDemoData = true;
+    
+    products = [
+        {
+            id: 1,
+            name: "iPhone 15 Pro",
+            price: 99990,
+            category_id: 1,
+            description: "Флагманский смартфон Apple с динамическим островом",
+            photo_url: null,
+            in_stock: 1
+        },
+        {
+            id: 2,
+            name: "Samsung Galaxy S24",
+            price: 79990,
+            category_id: 1,
+            description: "Мощный Android смартфон с камерой 200MP",
+            photo_url: null,
+            in_stock: 1
+        },
+        {
+            id: 3,
+            name: "AirPods Pro",
+            price: 24990,
+            category_id: 2,
+            description: "Беспроводные наушники с шумоподавлением",
+            photo_url: null,
+            in_stock: 0
+        },
+        {
+            id: 4,
+            name: "MacBook Air M3",
+            price: 129990,
+            category_id: 3,
+            description: "Легкий и мощный ноутбук от Apple",
+            photo_url: null,
+            in_stock: 1
+        }
+    ];
+    
+    categories = [
+        { id: 1, name: "Смартфоны", parent_id: null },
+        { id: 2, name: "Наушники", parent_id: null },
+        { id: 3, name: "Ноутбуки", parent_id: null }
+    ];
+    
+    console.log('✅ Загружены демо-данные');
+    renderCategories();
+    renderProducts();
+    showDemoWarning();
+}
+
+function showDemoWarning() {
+    const warning = document.createElement('div');
+    warning.className = 'demo-warning';
+    warning.innerHTML = '⚠️ Используются демо-данные. Для загрузки реальных товаров убедитесь, что бот запущен.';
+    document.querySelector('.products-container').insertBefore(warning, document.getElementById('productsGrid'));
+}
+
+function showLoader() {
+    document.getElementById('productsGrid').innerHTML = '<div class="loader">Загрузка товаров...</div>';
+}
+
+function renderCategories() {
+    const filtersContainer = document.getElementById('filters');
+    filtersContainer.innerHTML = '';
+
+    const allBtn = document.createElement('button');
+    allBtn.className = 'filter-btn active';
+    allBtn.textContent = 'Все';
+    allBtn.dataset.category = 'all';
+    allBtn.onclick = () => filterByCategory('all');
+    filtersContainer.appendChild(allBtn);
+
+    const rootCategories = categories.filter(cat => !cat.parent_id);
+    
+    rootCategories.forEach(category => {
+        const btn = document.createElement('button');
+        btn.className = 'filter-btn';
+        btn.textContent = category.name;
+        btn.dataset.category = category.id;
+        btn.onclick = () => filterByCategory(category.id);
+        filtersContainer.appendChild(btn);
+    });
+}
+
+function renderProducts(categoryId = null, searchQuery = '') {
+    const grid = document.getElementById('productsGrid');
+    
+    let filtered = products;
+
+    if (categoryId && categoryId !== 'all') {
+        const subcategories = categories.filter(cat => cat.parent_id == categoryId).map(cat => cat.id);
+        const categoryIds = [parseInt(categoryId), ...subcategories];
+        filtered = filtered.filter(p => categoryIds.includes(p.category_id));
+    }
+
+    if (searchQuery) {
+        filtered = filtered.filter(p => 
+            p.name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }
+
+    if (filtered.length === 0) {
+        grid.innerHTML = '<div class="empty-message">Товары не найдены</div>';
+        return;
+    }
+
+    grid.innerHTML = filtered.map(product => `
+        <div class="product-card" onclick="openProductModal(${product.id})">
+            <div class="product-image">
+                ${product.photo_url ? 
+                    `<img src="${product.photo_url}" alt="${product.name}" onerror="this.style.display='none'; this.parentNode.innerHTML='📦';">` : 
+                    '📦'
+                }
+            </div>
+            <div class="product-info">
+                <div class="product-name">${product.name}</div>
+                <div class="product-price">${product.price}₽</div>
+                ${product.in_stock ? 
+                    '<div class="stock-indicator in-stock">✅ В наличии</div>' : 
+                    '<div class="stock-indicator out-of-stock">❌ Нет в наличии</div>'
+                }
+            </div>
+        </div>
+    `).join('');
+}
+
+function filterByCategory(categoryId) {
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    const activeBtn = document.querySelector(`.filter-btn[data-category="${categoryId}"]`);
+    if (activeBtn) {
+        activeBtn.classList.add('active');
+    } else {
+        document.querySelector('.filter-btn[data-category="all"]').classList.add('active');
+    }
+
+    const searchQuery = document.getElementById('searchInput').value;
+    renderProducts(categoryId === 'all' ? null : categoryId, searchQuery);
+}
+
+function openProductModal(productId) {
+    currentProduct = products.find(p => p.id === productId);
+    if (!currentProduct) return;
+
+    const modal = document.getElementById('productModal');
+    const modalImage = document.getElementById('modalImage');
+    
+    if (currentProduct.photo_url) {
+        modalImage.innerHTML = `<img src="${currentProduct.photo_url}" alt="${currentProduct.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\\'width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 80px;\\'>📦</div>';">`;
+    } else {
+        modalImage.innerHTML = '<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 80px;">📦</div>';
+    }
+
+    document.getElementById('modalName').textContent = currentProduct.name;
+    document.getElementById('modalPrice').textContent = currentProduct.price + '₽';
+    
+    const stockIndicator = document.createElement('div');
+    stockIndicator.className = `stock-indicator ${currentProduct.in_stock ? 'in-stock' : 'out-of-stock'}`;
+    stockIndicator.textContent = currentProduct.in_stock ? '✅ В наличии' : '❌ Нет в наличии';
+    
+    const modalBody = document.querySelector('.modal-body');
+    const existingIndicator = modalBody.querySelector('.stock-indicator');
+    if (existingIndicator) {
+        existingIndicator.remove();
+    }
+    modalBody.insertBefore(stockIndicator, document.getElementById('modalDescription'));
+    
+    document.getElementById('modalDescription').textContent = currentProduct.description;
+
+    modal.classList.add('active');
+    
+    const addBtn = document.getElementById('addToCartBtn');
+    addBtn.disabled = !currentProduct.in_stock;
+    addBtn.textContent = currentProduct.in_stock ? 'Добавить в корзину' : 'Нет в наличии';
+}
+
+// Инициализация обработчиков событий
+document.addEventListener('DOMContentLoaded', function() {
+    // Обработчик добавления в корзину
+    document.getElementById('addToCartBtn').onclick = () => {
+        if (currentProduct && currentProduct.in_stock) {
+            addToCart(currentProduct, 1);
+            document.getElementById('productModal').classList.remove('active');
+            
+            if (tg.HapticFeedback) {
+                tg.HapticFeedback.notificationOccurred('success');
+            }
+        }
+    };
+
+    // Обработчик кнопки корзины
+    document.getElementById('cartButton').onclick = () => {
+        renderCart();
+        document.getElementById('cartModal').classList.add('active');
+    };
+
+    // Обработчик оформления заказа
+    document.getElementById('checkoutBtn').onclick = () => {
+        if (cart.length === 0) return;
+
+        const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+        const orderData = {
+            type: 'order',
+            items: cart.map(item => ({
+                id: item.id,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity
+            })),
+            total_price: totalPrice
+        };
+
+        console.log('📦 Отправка заказа:', orderData);
+        
+        // Основной способ отправки
+        if (tg.sendData) {
+            tg.sendData(JSON.stringify(orderData));
+            console.log('✅ Данные отправлены через sendData');
+        } else {
+            console.log('❌ sendData не доступен');
+            // Альтернативный способ - показать ошибку
+            alert('❌ Ошибка отправки заказа. Попробуйте еще раз.');
+            return;
+        }
+
+        // Очистка корзины
+        cart = [];
+        updateCartUI();
+        document.getElementById('cartModal').classList.remove('active');
+
+        // Показываем уведомление
+        if (tg.showPopup) {
+            tg.showPopup({
+                title: '✅ Заказ оформлен!',
+                message: 'Администратор свяжется с вами в ближайшее время.',
+                buttons: [{ type: 'ok' }]
+            });
+        } else {
+            alert('✅ Заказ оформлен! Администратор свяжется с вами.');
+        }
+    };
+
+    // Закрытие модальных окон
+    document.getElementById('closeModal').onclick = () => {
+        document.getElementById('productModal').classList.remove('active');
+    };
+
+    document.getElementById('closeCartModal').onclick = () => {
+        document.getElementById('cartModal').classList.remove('active');
+    };
+
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.classList.remove('active');
+            }
+        };
+    });
+
+    // Поиск
+    document.getElementById('searchInput').oninput = (e) => {
+        const query = e.target.value;
+        
+        let activeCategory = null;
+        const activeBtn = document.querySelector('.filter-btn.active');
+        if (activeBtn && activeBtn.dataset.category !== 'all') {
+            activeCategory = activeBtn.dataset.category;
+        }
+        
+        renderProducts(activeCategory, query);
+    };
+
+    // Загрузка данных
+    loadData();
+});
+
+function addToCart(product, quantity) {
+    const existingItem = cart.find(item => item.id === product.id);
+    
+    if (existingItem) {
+        existingItem.quantity += quantity;
+    } else {
+        cart.push({
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            photo_url: product.photo_url,
+            quantity: quantity
+        });
+    }
+
+    updateCartUI();
+}
+
+function updateCartUI() {
+    const cartButton = document.getElementById('cartButton');
+    const cartBadge = document.getElementById('cartBadge');
+    
+    const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+    
+    if (totalItems > 0) {
+        cartButton.style.display = 'flex';
+        cartBadge.textContent = totalItems;
+    } else {
+        cartButton.style.display = 'none';
+    }
+}
+
+function renderCart() {
+    const cartItems = document.getElementById('cartItems');
+    const cartTotal = document.getElementById('cartTotal');
+    
+    if (cart.length === 0) {
+        cartItems.innerHTML = '<div class="empty-message">Корзина пуста</div>';
+        cartTotal.style.display = 'none';
+        return;
+    }
+
+    cartItems.innerHTML = cart.map(item => `
+        <div class="cart-item">
+            <div class="cart-item-image">
+                ${item.photo_url ? 
+                    `<img src="${item.photo_url}" alt="${item.name}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;" onerror="this.style.display='none'; this.parentNode.innerHTML='<div style=\\'width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 30px;\\'>📦</div>';">` : 
+                    '<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 30px;">📦</div>'
+                }
+            </div>
+            <div class="cart-item-info">
+                <div class="cart-item-name">${item.name}</div>
+                <div class="cart-item-price">${item.price}₽ × ${item.quantity} = ${item.price * item.quantity}₽</div>
+                <div class="cart-item-controls">
+                    <button class="cart-item-btn" onclick="updateCartQuantity(${item.id}, -1)">−</button>
+                    <span class="cart-item-quantity">${item.quantity}</span>
+                    <button class="cart-item-btn" onclick="updateCartQuantity(${item.id}, 1)">+</button>
+                    <button class="cart-item-btn" onclick="removeFromCart(${item.id})" style="margin-left: auto; color: #ff3b30; border-color: #ff3b30;">🗑</button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    document.getElementById('totalPrice').textContent = totalPrice + '₽';
+    cartTotal.style.display = 'block';
+}
+
+function updateCartQuantity(productId, delta) {
+    const item = cart.find(i => i.id === productId);
+    if (!item) return;
+
+    item.quantity += delta;
+
+    if (item.quantity <= 0) {
+        removeFromCart(productId);
+    } else {
+        renderCart();
+        updateCartUI();
+    }
+}
+
+function removeFromCart(productId) {
+    cart = cart.filter(i => i.id !== productId);
+    renderCart();
+    updateCartUI();
+}
     </script>
 </body>
 </html>

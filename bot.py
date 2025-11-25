@@ -1111,9 +1111,19 @@ async def cmd_test_order(message: Message):
         )
         
         # Пробуем отправить в группу
+        test_text = f"""
+🧪 <b>ТЕСТОВЫЙ ЗАКАЗ #{order_id}</b>
+
+👤 Пользователь: {message.from_user.first_name} (ID: {message.from_user.id})
+💰 Сумма: 1000₽
+⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
+
+✅ Проверка отправки в группу работает!
+"""
+        
         await bot.send_message(
             chat_id=ORDER_CHANNEL_ID,
-            text=f"🧪 ТЕСТОВЫЙ ЗАКАЗ #{order_id}\nПроверка отправки в группу",
+            text=test_text,
             parse_mode="HTML"
         )
         
