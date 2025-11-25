@@ -1,12 +1,21 @@
 [
   {
+    "id": 3,
+    "name": "Сучка",
+    "description": "ебаная",
+    "price": 2414.0,
+    "category_id": 2,
+    "in_stock": 1,
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_34.jpg"
+  },
+  {
     "id": 2,
     "name": "Сперма единорога",
     "description": "Хорошая вкусная сперма",
     "price": 19999.0,
     "category_id": 2,
     "in_stock": 1,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_31.jpg"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_32.jpg"
   },
   {
     "id": 1,
@@ -15,6 +24,6 @@
     "price": 9999.0,
     "category_id": 2,
     "in_stock": 0,
-    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_30.jpg"
+    "photo_url": "https://api.telegram.org/file/bot8295835490:AAHFv9nWMVXl6PWgQqUWSf7Nj1SCzxEURZc/photos/file_33.jpg"
   }
 ]
