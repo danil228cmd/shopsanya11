@@ -882,7 +882,22 @@ async def delete_product(callback: CallbackQuery):
         await manage_products(callback)
     else:
         await callback.answer("❌ Товар не найден!", show_alert=True)
+@router.message(Command("getid"))
+async def cmd_get_id(message: Message):
+    """Получить ID чата"""
+    chat_id = message.chat.id
+    chat_type = message.chat.type
+    chat_title = getattr(message.chat, 'title', 'ЛС')
+    
+    info_text = f"""
+📊 <b>Информация о чате:</b>
+🆔 <b>ID:</b> <code>{chat_id}</code>
+📝 <b>Тип:</b> {chat_type}
+🏷️ <b>Название:</b> {chat_title}
 
+<b>Используйте этот ID в .env файле!</b>
+"""
+    await message.answer(info_text, parse_mode="HTML")
 # ==================== НАСТРОЙКИ КАНАЛА ====================
 ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID", "3478155443")  # Замените на ID вашего канала
 
