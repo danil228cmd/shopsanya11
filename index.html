@@ -719,14 +719,15 @@ async function tryLoadFromSource(baseUrl, sourceName) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.TIMEOUT);
         
+        // УБРАТЬ mode: 'cors' - это может блокировать запросы
         const productsResponse = await fetch(`${baseUrl}/api/products`, { 
-            signal: controller.signal,
-            mode: 'cors'
+            signal: controller.signal
+            // mode: 'cors'  // ← УДАЛИТЬ ЭТУ СТРОКУ
         });
         
         const categoriesResponse = await fetch(`${baseUrl}/api/categories`, { 
-            signal: controller.signal,
-            mode: 'cors'
+            signal: controller.signal
+            // mode: 'cors'  // ← УДАЛИТЬ ЭТУ СТРОКУ
         });
         
         clearTimeout(timeoutId);
