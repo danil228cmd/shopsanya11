@@ -1382,7 +1382,88 @@ async def handle_web_app_data(message: Message):
     except Exception as e:
         print(f"❌ Общая ошибка: {e}")
         await message.answer("❌ Ошибка обработки заказа")
+# ==================== API ДЛЯ ПРЯМОЙ ОТПРАВКИ ЗАКАЗОВ ====================
 
+async def create_order_api(request):
+    """API для прямого создания заказов из WebApp"""
+    try:
+        data = await request.json()
+        print(f"🟢 ЗАКАЗ ИЗ API: {data}")
+        
+        user_id = data.get('user_id')
+        items = data.get('items', [])
+        total_price = data.get('total_price', 0)
+        
+        if not user_id or not items:
+            return web.json_response({'error': 'Invalid data'}, status=400)
+        
+        # Создаем заказ в БД
+        order_id = db.create_order(
+            user_id=user_id,
+            username=data.get('username', ''),
+            items=json.dumps(items, ensure_ascii=False),
+            total_price=total_price
+        )
+        
+        # Отправляем в группу
+        order_details = []
+        for item in items:
+            item_total = item['price'] * item['quantity']
+            order_details.append(f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item_total}₽")
+        
+        order_text = f"""
+🛒 <b>НОВЫЙ ЗАКАЗ ИЗ WEBAPP (API)!</b>
+
+👤 <b>Клиент:</b>
+├ Имя: {data.get('first_name', 'Unknown')}
+├ ID: {user_id}
+└ @{data.get('username', 'нет username')}
+
+📦 <b>Заказ:</b>
+{chr(10).join(order_details)}
+
+💰 <b>ИТОГО: {total_price}₽</b>
+
+⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
+
+🆔 <b>Заказ #{order_id}</b>
+"""
+        
+        await bot.send_message(
+            chat_id=ORDER_CHANNEL_ID,
+            text=order_text,
+            parse_mode="HTML"
+        )
+        
+        print(f"✅ Заказ #{order_id} создан через API")
+        return web.json_response({'order_id': order_id, 'status': 'success'})
+        
+    except Exception as e:
+        print(f"❌ Ошибка API: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+# В функции start_api_server добавь:
+async def start_api_server():
+    """Запуск API сервера"""
+    app = web.Application()
+    
+    cors = aiohttp_cors.setup(app, defaults={
+        "*": aiohttp_cors.ResourceOptions(
+            allow_credentials=True,
+            expose_headers="*",
+            allow_headers="*",
+        )
+    })
+    
+    cors.add(app.router.add_get('/api/products', get_products_api))
+    cors.add(app.router.add_get('/api/categories', get_categories_api))
+    cors.add(app.router.add_post('/api/order', create_order_api))  # ← ДОБАВЬ ЭТУ СТРОЧКУ
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    await site.start()
+    logger.info("🌐 API сервер запущен на http://0.0.0.0:8080")
 # ==================== API ДЛЯ MINI APP ====================
 
 from aiohttp import web

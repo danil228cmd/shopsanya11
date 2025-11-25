@@ -1126,37 +1126,51 @@ function removeFromCart(productId) {
 
 // Улучшенная функция отправки заказа
 function sendOrderToBot(orderData) {
-    console.log('🔄 Отправка заказа...', orderData);
+    console.log('🔄 ОТПРАВКА ЗАКАЗА:', orderData);
     
-    const checkoutBtn = document.getElementById('checkoutBtn');
-    const originalText = checkoutBtn.textContent;
-    checkoutBtn.textContent = 'Отправка...';
-    checkoutBtn.disabled = true;
-
-    try {
-        // СПОСОБ 1: Telegram WebApp
-        if (window.Telegram && window.Telegram.WebApp && typeof window.Telegram.WebApp.sendData === 'function') {
+    // Всегда показываем успех
+    handleOrderSuccess();
+    
+    // Способ 1: Telegram WebApp (основной)
+    if (window.Telegram?.WebApp?.sendData) {
+        try {
             console.log('📤 Отправка через Telegram WebApp...');
-            window.Telegram.WebApp.sendData(JSON.stringify(orderData));
-            console.log('✅ Данные отправлены через sendData');
-        } 
-        // СПОСОБ 2: Прямой вызов бота (запасной)
-        else {
-            console.log('📤 Отправка через запасной метод...');
-            // Этот метод должен сработать!
-            if (window.Telegram && window.Telegram.WebApp) {
-                window.Telegram.WebApp.close();
-            }
+            Telegram.WebApp.sendData(JSON.stringify(orderData));
+        } catch (error) {
+            console.error('❌ Ошибка WebApp:', error);
         }
+    }
+    
+    // Способ 2: Прямой запрос к боту (запасной)
+    sendOrderToBotDirectly(orderData);
+}
+
+// ЗАПАСНОЙ СПОСОБ - отправка напрямую через API
+async function sendOrderToBotDirectly(orderData) {
+    try {
+        console.log('📤 Запасной способ: отправка через API...');
         
-        // Всегда показываем успех пользователю
-        handleOrderSuccess();
+        // Отправляем данные напрямую боту через fetch
+        const response = await fetch('http://localhost:8080/api/order', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                user_id: Telegram.WebApp.initDataUnsafe.user?.id,
+                username: Telegram.WebApp.initDataUnsafe.user?.username,
+                first_name: Telegram.WebApp.initDataUnsafe.user?.first_name,
+                ...orderData
+            })
+        });
         
+        if (response.ok) {
+            console.log('✅ Заказ отправлен через API');
+        } else {
+            console.log('❌ Ошибка API:', await response.text());
+        }
     } catch (error) {
-        console.error('❌ Ошибка отправки:', error);
-        checkoutBtn.textContent = originalText;
-        checkoutBtn.disabled = false;
-        alert('❌ Ошибка отправки заказа: ' + error.message);
+        console.log('❌ API недоступен:', error.message);
     }
 }
 
