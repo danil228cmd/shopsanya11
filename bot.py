@@ -3,7 +3,7 @@ import logging
 import os
 import subprocess
 from aiogram import Bot, Dispatcher, F, Router
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
     WebAppInfo, FSInputFile
@@ -16,7 +16,7 @@ from typing import List, Optional, Tuple
 import json
 from datetime import datetime
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import CommandStart, Command
+
 # Загрузка переменных окружения
 def load_env():
     if os.path.exists('.env'):
@@ -33,6 +33,7 @@ load_env()
 TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://your-domain.com")
+ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID", "-1003498561307")
 
 # Настройка логирования
 logging.basicConfig(
@@ -664,7 +665,6 @@ async def process_product_name(message: Message, state: FSMContext):
         parse_mode="HTML"
     )
     await state.set_state(AddProduct.waiting_for_description)
-
 @router.message(AddProduct.waiting_for_description)
 async def process_product_description(message: Message, state: FSMContext):
     description = message.text.strip()
@@ -850,48 +850,7 @@ async def manage_product_detail(callback: CallbackQuery):
     except TelegramBadRequest:
         pass
     await callback.answer()
-# ==================== ДИАГНОСТИКА WEBAPP ====================
 
-@router.message(Command("debug_webapp"))
-async def cmd_debug_webapp(message: Message):
-    """Диагностика WebApp"""
-    debug_info = f"""
-🔍 <b>ДИАГНОСТИКА WEBAPP</b>
-
-🤖 <b>Бот:</b> @webtest1262_bot
-🌐 <b>WebApp URL:</b> {WEBAPP_URL}
-👤 <b>Admin ID:</b> {ADMIN_ID}
-📦 <b>Канал заказов:</b> {ORDER_CHANNEL_ID}
-
-📊 <b>Статистика:</b>
-├ Товаров в БД: {len(db.get_all_products())}
-├ Категорий в БД: {len(db.get_all_categories())}
-└ Заказов в БД: {len([row for row in db.get_connection().cursor().execute("SELECT id FROM orders").fetchall()])}
-
-🛠 <b>Проверки:</b>
-├ WebApp URL доступен: {'✅' if WEBAPP_URL.startswith('https://') else '❌'}
-├ Бот запущен: ✅
-├ API сервер работает: ✅
-└ Канал настроен: {'✅' if ORDER_CHANNEL_ID else '❌'}
-
-💡 <b>Что проверить:</b>
-1. WebApp URL в BotFather
-2. Права бота в группе
-3. .env файл
-4. GitHub Pages доступен
-"""
-    await message.answer(debug_info, parse_mode="HTML")
-
-@router.message(Command("check_url"))
-async def cmd_check_url(message: Message):
-    """Проверка доступности WebApp URL"""
-    import requests
-    try:
-        response = requests.get(WEBAPP_URL, timeout=10)
-        status = "✅ Доступен" if response.status_code == 200 else f"❌ Код: {response.status_code}"
-        await message.answer(f"🌐 WebApp URL: {WEBAPP_URL}\nСтатус: {status}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка проверки URL: {e}")
 @router.callback_query(F.data.startswith("toggle_stock_"))
 async def toggle_stock(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
@@ -923,6 +882,9 @@ async def delete_product(callback: CallbackQuery):
         await manage_products(callback)
     else:
         await callback.answer("❌ Товар не найден!", show_alert=True)
+
+# ==================== КОМАНДЫ ====================
+
 @router.message(Command("getid"))
 async def cmd_get_id(message: Message):
     """Получить ID чата"""
@@ -939,10 +901,7 @@ async def cmd_get_id(message: Message):
 <b>Используйте этот ID в .env файле!</b>
 """
     await message.answer(info_text, parse_mode="HTML")
-# ==================== НАСТРОЙКИ КАНАЛА ====================
-ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID", "-1003498561307")  # Замените на ID вашего канала
 
-# ==================== ОБРАБОТКА ЗАКАЗОВ ====================
 @router.message(Command("test"))
 async def cmd_test(message: Message):
     """Тест отправки сообщения в группу"""
@@ -954,12 +913,107 @@ async def cmd_test(message: Message):
         await message.answer("✅ Тестовое сообщение отправлено в группу")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
+
+@router.message(Command("test_order"))
+async def cmd_test_order(message: Message):
+    """Тест создания заказа"""
+    try:
+        # Тестовый заказ
+        order_id = db.create_order(
+            user_id=message.from_user.id,
+            username=message.from_user.username or 'test',
+            items=json.dumps([{"name": "Тестовый товар", "price": 1000, "quantity": 1}]),
+            total_price=1000
+        )
+        
+        # Пробуем отправить в группу
+        test_text = f"""
+🧪 <b>ТЕСТОВЫЙ ЗАКАЗ #{order_id}</b>
+
+👤 Пользователь: {message.from_user.first_name} (ID: {message.from_user.id})
+💰 Сумма: 1000₽
+⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
+
+✅ Проверка отправки в группу работает!
+"""
+        
+        await bot.send_message(
+            chat_id=ORDER_CHANNEL_ID,
+            text=test_text,
+            parse_mode="HTML"
+        )
+        
+        await message.answer(f"✅ Тестовый заказ #{order_id} создан и отправлен в группу")
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка теста: {e}")
+
+@router.message(Command("fake_order"))
+async def cmd_fake_order(message: Message):
+    """Создание тестового заказа как из WebApp"""
+    print("🟢 ТЕСТ: Создание fake заказа...")
+    
+    # Создаем тестовый заказ напрямую в БД (имитация WebApp)
+    test_items = [
+        {
+            "id": 1,
+            "name": "Nike Skeleton Purple",
+            "price": 9999.0,
+            "quantity": 2
+        },
+        {
+            "id": 2, 
+            "name": "Тестовый товар",
+            "price": 19999.0,
+            "quantity": 1
+        }
+    ]
+    
+    total_price = sum(item['price'] * item['quantity'] for item in test_items)
+    
+    order_id = db.create_order(
+        user_id=message.from_user.id,
+        username=message.from_user.username or 'test_user',
+        items=json.dumps(test_items, ensure_ascii=False),
+        total_price=total_price
+    )
+    
+    # Отправляем в группу
+    order_text = f"""
+🛒 <b>ТЕСТОВЫЙ ЗАКАЗ ИЗ FAKE_ORDER #{order_id}</b>
+
+👤 <b>Клиент:</b>
+├ Имя: {message.from_user.first_name}
+├ ID: {message.from_user.id}
+└ @{message.from_user.username or 'нет username'}
+
+📦 <b>Заказ:</b>
+• Nike Skeleton Purple - 2шт. × 9999₽ = 19998₽
+• Тестовый товар - 1шт. × 19999₽ = 19999₽
+
+💰 <b>ИТОГО: {total_price}₽</b>
+
+⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
+
+🆔 <b>Заказ #{order_id}</b>
+"""
+    
+    await bot.send_message(
+        chat_id=ORDER_CHANNEL_ID,
+        text=order_text,
+        parse_mode="HTML"
+    )
+    
+    await message.answer(f"✅ Fake заказ #{order_id} создан и отправлен в группу!")
+    print(f"✅ Fake заказ #{order_id} завершен")
+
+# ==================== ОБРАБОТКА WEBAPP ДАННЫХ ====================
+
 @router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
     """УЛУЧШЕННЫЙ обработчик данных из Mini App"""
     print(f"🟢 WEBAPP ДАННЫЕ ПОЛУЧЕНЫ!")
     print(f"🟢 От: {message.from_user.id} ({message.from_user.first_name})")
-    print(f"🟢 Данные: {message.web_app_data}")
     
     try:
         # Проверяем данные
@@ -1059,147 +1113,7 @@ async def handle_web_app_data(message: Message):
     except Exception as e:
         print(f"❌ Общая ошибка: {e}")
         await message.answer("❌ Ошибка обработки заказа")
-@router.message()
-async def mega_debug_handler(message: Message):
-    """МЕГА-ОТЛАДОЧНЫЙ обработчик ВСЕХ сообщений"""
-    
-    # Логируем ВСЕ сообщения
-    print(f"\n🔴 MEGA_DEBUG: Получено сообщение!")
-    print(f"🔴 Тип: {message.content_type}")
-    print(f"🔴 От: {message.from_user.id} ({message.from_user.first_name})")
-    print(f"🔴 Текст: {message.text}")
-    print(f"🔴 Есть web_app_data: {hasattr(message, 'web_app_data')}")
-    
-    if hasattr(message, 'web_app_data') and message.web_app_data:
-        print(f"🚨🚨🚨 WEBAPP ДАННЫЕ ОБНАРУЖЕНЫ! 🚨🚨🚨")
-        print(f"🚨 Данные: {message.web_app_data}")
-        print(f"🚨 Data attribute: {message.web_app_data.data}")
-        
-        # Вызываем основной обработчик
-        await handle_web_app_data(message)
-    else:
-        print(f"🔴 Нет web_app_data, пропускаем...")
-        
-        # Обрабатываем команды как обычно
-        if message.text and message.text.startswith('/'):
-            await dp.feed_update(bot, message)
-@router.message(Command("test_order"))
-async def cmd_test_order(message: Message):
-    """Тест создания заказа"""
-    try:
-        # Тестовый заказ
-        order_id = db.create_order(
-            user_id=message.from_user.id,
-            username=message.from_user.username or 'test',
-            items=json.dumps([{"name": "Тестовый товар", "price": 1000, "quantity": 1}]),
-            total_price=1000
-        )
-        
-        # Пробуем отправить в группу
-        test_text = f"""
-🧪 <b>ТЕСТОВЫЙ ЗАКАЗ #{order_id}</b>
 
-👤 Пользователь: {message.from_user.first_name} (ID: {message.from_user.id})
-💰 Сумма: 1000₽
-⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
-
-✅ Проверка отправки в группу работает!
-"""
-        
-        await bot.send_message(
-            chat_id=ORDER_CHANNEL_ID,
-            text=test_text,
-            parse_mode="HTML"
-        )
-        
-        await message.answer(f"✅ Тестовый заказ #{order_id} создан и отправлен в группу")
-        
-    except Exception as e:
-        await message.answer(f"❌ Ошибка теста: {e}")
-@router.message(Command("fake_order"))
-async def cmd_fake_order(message: Message):
-    """Создание тестового заказа как из WebApp"""
-    print("🟢 ТЕСТ: Создание fake заказа...")
-    
-    # Создаем тестовый заказ напрямую в БД (имитация WebApp)
-    test_items = [
-        {
-            "id": 1,
-            "name": "Nike Skeleton Purple",
-            "price": 9999.0,
-            "quantity": 2
-        },
-        {
-            "id": 2, 
-            "name": "Сперма единорога",
-            "price": 19999.0,
-            "quantity": 1
-        }
-    ]
-    
-    total_price = sum(item['price'] * item['quantity'] for item in test_items)
-    
-    order_id = db.create_order(
-        user_id=message.from_user.id,
-        username=message.from_user.username or 'test_user',
-        items=json.dumps(test_items, ensure_ascii=False),
-        total_price=total_price
-    )
-    
-    # Отправляем в группу
-    order_text = f"""
-🛒 <b>ТЕСТОВЫЙ ЗАКАЗ ИЗ FAKE_ORDER #{order_id}</b>
-
-👤 <b>Клиент:</b>
-├ Имя: {message.from_user.first_name}
-├ ID: {message.from_user.id}
-└ @{message.from_user.username or 'нет username'}
-
-📦 <b>Заказ:</b>
-• Nike Skeleton Purple - 2шт. × 9999₽ = 19998₽
-• Сперма единорога - 1шт. × 19999₽ = 19999₽
-
-💰 <b>ИТОГО: {total_price}₽</b>
-
-⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
-
-🆔 <b>Заказ #{order_id}</b>
-"""
-    
-    await bot.send_message(
-        chat_id=ORDER_CHANNEL_ID,
-        text=order_text,
-        parse_mode="HTML"
-    )
-    
-    await message.answer(f"✅ Fake заказ #{order_id} создан и отправлен в группу!")
-    print(f"✅ Fake заказ #{order_id} завершен")
-@router.message(Command("webapp_test"))
-async def cmd_webapp_test(message: Message):
-    """Тест WebApp данных"""
-    test_data = {
-        "type": "order",
-        "items": [
-            {
-                "id": 1,
-                "name": "Тестовый товар",
-                "price": 1000,
-                "quantity": 2
-            }
-        ],
-        "total_price": 2000
-    }
-    
-    # Создаем fake WebApp данные
-    class FakeWebAppData:
-        def __init__(self, data):
-            self.data = json.dumps(data)
-    
-    fake_webapp_data = FakeWebAppData(test_data)
-    message.web_app_data = fake_webapp_data
-    
-    # Вызываем обработчик
-    await handle_web_app_data(message)
 # ==================== API ДЛЯ MINI APP ====================
 
 from aiohttp import web
@@ -1247,6 +1161,19 @@ async def start_api_server():
     await site.start()
     logger.info("🌐 API сервер запущен на http://0.0.0.0:8080")
 
+# ==================== ОБРАБОТКА ОШИБОК ====================
+
+@router.errors()
+async def errors_handler(event, exception):
+    """ИСПРАВЛЕННЫЙ обработчик ошибок"""
+    if isinstance(exception, TelegramBadRequest):
+        if "message is not modified" in str(exception):
+            logger.debug("Игнорируем 'message is not modified'")
+            return True
+    
+    logger.error(f"Необработанная ошибка: {exception}")
+    return True
+
 # ==================== ЗАПУСК ====================
 
 async def on_startup():
@@ -1256,6 +1183,7 @@ async def on_startup():
     logger.info(f"✅ Бот запущен!")
     logger.info(f"👤 Admin ID: {ADMIN_ID}")
     logger.info(f"🌐 WebApp URL: {WEBAPP_URL}")
+    logger.info(f"📦 Order Channel: {ORDER_CHANNEL_ID}")
     logger.info("=" * 50)
 
 async def on_shutdown():
@@ -1265,26 +1193,12 @@ async def main():
     dp.include_router(router)
     
     await on_startup()
-    
     await start_api_server()
     
     try:
         await dp.start_polling(bot, skip_updates=True)
     finally:
         await on_shutdown()
-
-# ==================== ОБРАБОТКА ОШИБОК ====================
-
-@router.errors()
-async def errors_handler(event, exception):
-    """ИСПРАВЛЕННЫЙ: Отлов всех ошибок, включая 'message is not modified'"""
-    if isinstance(exception, TelegramBadRequest):
-        if "message is not modified" in str(exception):
-            logger.debug("Игнорируем 'message is not modified' (пользователь дважды нажал кнопку)")
-            return True
-    
-    logger.error(f"Необработанная ошибка: {exception}")
-    return True
 
 if __name__ == "__main__":
     try:
