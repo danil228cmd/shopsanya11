@@ -902,7 +902,17 @@ async def cmd_get_id(message: Message):
 ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID", "-1003498561307")  # Замените на ID вашего канала
 
 # ==================== ОБРАБОТКА ЗАКАЗОВ ====================
-
+@router.message(Command("test"))
+async def cmd_test(message: Message):
+    """Тест отправки сообщения в группу"""
+    try:
+        await bot.send_message(
+            chat_id=ORDER_CHANNEL_ID,
+            text="🟢 ТЕСТ: Бот может отправлять сообщения в группу!"
+        )
+        await message.answer("✅ Тестовое сообщение отправлено в группу")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
 @router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
     """Обработка данных из Mini App"""
