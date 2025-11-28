@@ -1,21 +1,19 @@
 import asyncio
 import logging
 import os
-import subprocess
+import json
+from datetime import datetime
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.filters import CommandStart, Command
-from aiogram.types import (
-    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
-    WebAppInfo, FSInputFile
-)
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-import sqlite3
-from typing import List, Optional, Tuple
-import json
-from datetime import datetime
 from aiogram.exceptions import TelegramBadRequest
+import sqlite3
+from typing import List, Optional
+from aiohttp import web
+import aiohttp_cors
 
 # Загрузка переменных окружения
 def load_env():
@@ -30,16 +28,13 @@ def load_env():
 load_env()
 
 # Настройки
-TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://your-domain.com")
-ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID", "-1003498561307")
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
+WEBAPP_URL = os.getenv("WEBAPP_URL")
+ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID")
 
 # Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Инициализация
@@ -47,21 +42,6 @@ bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
-
-def push_to_github():
-    """Автоматически пушит изменения на GitHub"""
-    try:
-        os.chdir(os.path.dirname(os.path.abspath(__file__)))
-        
-        subprocess.run(['git', 'add', 'api/'], check=True)
-        subprocess.run(['git', 'commit', '-m', 'Auto-update: ' + datetime.now().strftime('%Y-%m-%d %H:%M:%S')], check=True)
-        subprocess.run(['git', 'push', 'origin', 'master'], check=True)
-        
-        logger.info("✅ Изменения запушены на GitHub")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Ошибка пуша на GitHub: {e}")
-        return False
 
 # ==================== БАЗА ДАННЫХ ====================
 class Database:
@@ -75,52 +55,44 @@ class Database:
         return conn
     
     def init_db(self):
-        """Инициализация базы данных"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                parent_id INTEGER DEFAULT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (parent_id) REFERENCES categories (id) ON DELETE CASCADE
-            )
-        ''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            parent_id INTEGER DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (parent_id) REFERENCES categories (id) ON DELETE CASCADE
+        )''')
         
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS products (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                category_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                description TEXT,
-                price REAL NOT NULL,
-                photo_id TEXT,
-                in_stock BOOLEAN DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE CASCADE
-            )
-        ''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            price REAL NOT NULL,
+            photo_id TEXT,
+            in_stock BOOLEAN DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE CASCADE
+        )''')
         
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS orders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                username TEXT,
-                items TEXT NOT NULL,
-                total_price REAL NOT NULL,
-                status TEXT DEFAULT 'new',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            username TEXT,
+            items TEXT NOT NULL,
+            total_price REAL NOT NULL,
+            status TEXT DEFAULT 'new',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
         
         conn.commit()
         conn.close()
         logger.info("✅ База данных инициализирована")
     
     def clear_all_data(self):
-        """Очистка всех данных (категории и товары)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM products")
@@ -131,27 +103,22 @@ class Database:
         logger.info("🗑️ Все данные очищены")
     
     async def export_to_json(self):
-        """Экспорт товаров и категорий в JSON файлы для GitHub Pages"""
         try:
             products = self.get_all_products()
             categories = self.get_all_categories()
             
-            # Конвертируем photo_id в URL для товаров
             for product in products:
                 if product['photo_id']:
                     try:
                         file = await bot.get_file(product['photo_id'])
                         product['photo_url'] = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
-                    except Exception as e:
-                        logger.error(f"❌ Ошибка получения фото: {e}")
+                    except:
                         product['photo_url'] = None
                 else:
                     product['photo_url'] = None
                 
-                if 'category_name' in product:
-                    del product['category_name']
-                if 'photo_id' in product:
-                    del product['photo_id']
+                product.pop('category_name', None)
+                product.pop('photo_id', None)
             
             os.makedirs('api', exist_ok=True)
             
@@ -162,37 +129,26 @@ class Database:
                 json.dump(categories, f, ensure_ascii=False, indent=2)
             
             logger.info("✅ Данные экспортированы в JSON")
-            push_to_github()
             return True
-            
         except Exception as e:
-            logger.error(f"❌ Ошибка экспорта в JSON: {e}")
+            logger.error(f"❌ Ошибка экспорта: {e}")
             return False
     
-    # ===== КАТЕГОРИИ =====
-    
+    # Категории
     async def add_category(self, name: str, parent_id: Optional[int] = None) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO categories (name, parent_id) VALUES (?, ?)", 
-            (name, parent_id)
-        )
+        cursor.execute("INSERT INTO categories (name, parent_id) VALUES (?, ?)", (name, parent_id))
         cat_id = cursor.lastrowid
         conn.commit()
         conn.close()
-        
         await self.export_to_json()
         return cat_id
     
     def get_root_categories(self) -> List[dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, name FROM categories 
-            WHERE parent_id IS NULL 
-            ORDER BY name
-        """)
+        cursor.execute("SELECT id, name FROM categories WHERE parent_id IS NULL ORDER BY name")
         categories = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return categories
@@ -200,11 +156,7 @@ class Database:
     def get_subcategories(self, parent_id: int) -> List[dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, name FROM categories 
-            WHERE parent_id = ? 
-            ORDER BY name
-        """, (parent_id,))
+        cursor.execute("SELECT id, name FROM categories WHERE parent_id = ? ORDER BY name", (parent_id,))
         categories = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return categories
@@ -212,10 +164,7 @@ class Database:
     def get_all_categories(self) -> List[dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, name, parent_id FROM categories 
-            ORDER BY parent_id, name
-        """)
+        cursor.execute("SELECT id, name, parent_id FROM categories ORDER BY parent_id, name")
         categories = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return categories
@@ -234,52 +183,39 @@ class Database:
         cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
         conn.commit()
         conn.close()
-        
         await self.export_to_json()
         return True
     
     def get_leaf_categories(self) -> List[dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT c.id, c.name, c.parent_id 
-            FROM categories c
-            WHERE NOT EXISTS (
-                SELECT 1 FROM categories WHERE parent_id = c.id
-            )
-            ORDER BY c.name
-        """)
+        cursor.execute("""SELECT c.id, c.name, c.parent_id FROM categories c
+            WHERE NOT EXISTS (SELECT 1 FROM categories WHERE parent_id = c.id)
+            ORDER BY c.name""")
         categories = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return categories
     
-    # ===== ТОВАРЫ =====
-    
+    # Товары
     async def add_product(self, category_id: int, name: str, description: str, 
                     price: float, photo_id: Optional[str] = None) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO products (category_id, name, description, price, photo_id, in_stock)
-            VALUES (?, ?, ?, ?, ?, 1)
-        """, (category_id, name, description, price, photo_id))
+        cursor.execute("""INSERT INTO products (category_id, name, description, price, photo_id, in_stock)
+            VALUES (?, ?, ?, ?, ?, 1)""", (category_id, name, description, price, photo_id))
         prod_id = cursor.lastrowid
         conn.commit()
         conn.close()
-        
         await self.export_to_json()
         return prod_id
     
     def get_all_products(self) -> List[dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT p.id, p.name, p.description, p.price, p.photo_id, 
-                   p.category_id, p.in_stock, c.name as category_name
-            FROM products p
-            LEFT JOIN categories c ON p.category_id = c.id
-            ORDER BY p.created_at DESC
-        """)
+        cursor.execute("""SELECT p.id, p.name, p.description, p.price, p.photo_id, 
+            p.category_id, p.in_stock, c.name as category_name
+            FROM products p LEFT JOIN categories c ON p.category_id = c.id
+            ORDER BY p.created_at DESC""")
         products = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return products
@@ -287,10 +223,7 @@ class Database:
     def get_product(self, product_id: int) -> Optional[dict]:
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, name, description, price, photo_id, category_id, in_stock
-            FROM products WHERE id = ?
-        """, (product_id,))
+        cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         result = cursor.fetchone()
         conn.close()
         return dict(result) if result else None
@@ -301,44 +234,30 @@ class Database:
         cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
         conn.commit()
         conn.close()
-        
         await self.export_to_json()
         return True
     
     async def toggle_product_stock(self, product_id: int) -> bool:
-        """Переключить наличие товара"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
-        # Получаем текущий статус
         cursor.execute("SELECT in_stock FROM products WHERE id = ?", (product_id,))
         result = cursor.fetchone()
-        
-        if result is None:
+        if not result:
             conn.close()
             return False
-        
-        current_stock = result[0]
-        new_stock = 0 if current_stock else 1
-        
-        # Обновляем статус
+        new_stock = 0 if result[0] else 1
         cursor.execute("UPDATE products SET in_stock = ? WHERE id = ?", (new_stock, product_id))
         conn.commit()
         conn.close()
-        
         await self.export_to_json()
-        logger.info(f"✅ Товар {product_id}: наличие изменено с {current_stock} на {new_stock}")
         return True
     
-    # ===== ЗАКАЗЫ =====
-    
+    # Заказы
     def create_order(self, user_id: int, username: str, items: str, total_price: float) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO orders (user_id, username, items, total_price)
-            VALUES (?, ?, ?, ?)
-        """, (user_id, username, items, total_price))
+        cursor.execute("INSERT INTO orders (user_id, username, items, total_price) VALUES (?, ?, ?, ?)",
+            (user_id, username, items, total_price))
         order_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -359,18 +278,10 @@ class AddProduct(StatesGroup):
     waiting_for_photo = State()
 
 # ==================== КЛАВИАТУРЫ ====================
-
 def get_main_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton(
-            text="🛒 Открыть магазин", 
-            web_app=WebAppInfo(url=WEBAPP_URL)
-        )]
-    ]
-    
+    buttons = [[InlineKeyboardButton(text="🛒 Открыть магазин", web_app=WebAppInfo(url=WEBAPP_URL))]]
     if is_admin:
         buttons.append([InlineKeyboardButton(text="⚙️ Админ-панель", callback_data="admin_panel")])
-    
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_admin_keyboard() -> InlineKeyboardMarkup:
@@ -379,50 +290,33 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="➕ Добавить товар", callback_data="add_product")],
         [InlineKeyboardButton(text="📋 Управление категориями", callback_data="manage_categories")],
         [InlineKeyboardButton(text="📦 Управление товарами", callback_data="manage_products")],
-        [InlineKeyboardButton(text="🗑️ ОЧИСТИТЬ ВСЁ", callback_data="clear_all_data")],
+        [InlineKeyboardButton(text="🗑️ ОЧИСТИТЬ ВСЕ", callback_data="clear_all_data")],
         [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_category_type_keyboard() -> InlineKeyboardMarkup:
-    buttons = [
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📁 Основная категория", callback_data="addcat_root")],
         [InlineKeyboardButton(text="📂 Подкатегория", callback_data="addcat_sub")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    ])
 
 def get_categories_keyboard(parent_id: Optional[int] = None, action: str = "select") -> InlineKeyboardMarkup:
-    if parent_id is None:
-        categories = db.get_root_categories()
-    else:
-        categories = db.get_subcategories(parent_id)
-    
-    buttons = []
-    for cat in categories:
-        buttons.append([InlineKeyboardButton(
-            text=cat['name'],
-            callback_data=f"{action}_cat_{cat['id']}"
-        )])
-    
-    back_action = "admin_panel" if action == "select" else "admin_panel"
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=back_action)])
-    
+    categories = db.get_root_categories() if parent_id is None else db.get_subcategories(parent_id)
+    buttons = [[InlineKeyboardButton(text=cat['name'], callback_data=f"{action}_cat_{cat['id']}")] for cat in categories]
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_back_keyboard(callback: str = "admin_panel") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад", callback_data=callback)]
-    ])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data=callback)]])
 
 # ==================== ХЕНДЛЕРЫ ====================
-
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     is_admin = message.from_user.id == ADMIN_ID
-    
-    welcome_text = f"""
-🎉 <b>Добро пожаловать в магазин!</b>
+    await message.answer(
+        f"""🎉 <b>Добро пожаловать в магазин!</b>
 
 Привет, {message.from_user.first_name}! 👋
 
@@ -431,11 +325,7 @@ async def cmd_start(message: Message):
 • Удобный каталог с поиском
 • Быстрое оформление заказа
 
-Нажми кнопку ниже, чтобы открыть магазин! 👇
-"""
-    
-    await message.answer(
-        welcome_text,
+Нажми кнопку ниже, чтобы открыть магазин! 👇""",
         reply_markup=get_main_keyboard(is_admin),
         parse_mode="HTML"
     )
@@ -444,7 +334,6 @@ async def cmd_start(message: Message):
 async def show_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     is_admin = callback.from_user.id == ADMIN_ID
-    
     try:
         await callback.message.edit_text(
             "🏠 <b>Главное меню</b>\n\nВыберите действие:",
@@ -453,10 +342,7 @@ async def show_main_menu(callback: CallbackQuery, state: FSMContext):
         )
     except TelegramBadRequest:
         pass
-    
     await callback.answer()
-
-# ==================== АДМИН ПАНЕЛЬ ====================
 
 @router.callback_query(F.data == "admin_panel")
 async def show_admin_panel(callback: CallbackQuery, state: FSMContext):
@@ -466,1014 +352,112 @@ async def show_admin_panel(callback: CallbackQuery, state: FSMContext):
         return
     
     categories_count = len(db.get_all_categories())
-    products = db.get_all_products()
-    products_count = len(products)
+    products_count = len(db.get_all_products())
     
-    admin_text = f"""
-⚙️ <b>Админ-панель</b>
+    try:
+        await callback.message.edit_text(
+            f"""⚙️ <b>Админ-панель</b>
 
 📊 <b>Статистика:</b>
 📦 Категорий: {categories_count}
 🛒 Товаров: {products_count}
 
-Выберите действие:
-"""
-    
-    try:
-        await callback.message.edit_text(
-            admin_text,
+Выберите действие:""",
             reply_markup=get_admin_keyboard(),
             parse_mode="HTML"
         )
     except TelegramBadRequest:
         pass
-    
     await callback.answer()
 
-@router.callback_query(F.data == "clear_all_data")
-async def clear_all_data(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("❌ Нет доступа!", show_alert=True)
-        return
-    
-    db.clear_all_data()
-    await db.export_to_json()
-    
-    await callback.answer("✅ Все данные очищены!", show_alert=True)
-    await show_admin_panel(callback, FSMContext(storage=storage, key=None))
-
-# ===== ДОБАВЛЕНИЕ КАТЕГОРИИ =====
-
-@router.callback_query(F.data == "add_category")
-async def start_add_category(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("❌ У вас нет доступа!", show_alert=True)
-        return
-    
-    try:
-        await callback.message.edit_text(
-            "➕ <b>Добавление категории</b>\n\n"
-            "Выберите тип:\n\n"
-            "📁 <b>Основная</b> - корневая категория (Обувь, Одежда)\n"
-            "📂 <b>Подкатегория</b> - вложенная (Nike внутри Обуви)",
-            reply_markup=get_category_type_keyboard(),
-            parse_mode="HTML"
-        )
-    except TelegramBadRequest:
-        pass
-    
-    await callback.answer()
-
-@router.callback_query(F.data == "addcat_root")
-async def add_root_category(callback: CallbackQuery, state: FSMContext):
-    await state.update_data(parent_id=None)
-    await callback.message.edit_text(
-        "➕ <b>Добавление основной категории</b>\n\n"
-        "Напишите название категории:\n"
-        "<i>Например: Обувь, Одежда, Аксессуары</i>",
-        parse_mode="HTML"
-    )
-    await state.set_state(AddCategory.waiting_for_name)
-    await callback.answer()
-
-@router.callback_query(F.data == "addcat_sub")
-async def select_parent_category(callback: CallbackQuery, state: FSMContext):
-    categories = db.get_root_categories()
-    
-    if not categories:
-        await callback.message.edit_text(
-            "❌ Сначала создайте основную категорию!",
-            reply_markup=get_back_keyboard("admin_panel"),
-            parse_mode="HTML"
-        )
-        return
-    
-    await callback.message.edit_text(
-        "➕ <b>Добавление подкатегории</b>\n\nВыберите родительскую категорию:",
-        reply_markup=get_categories_keyboard(parent_id=None, action="addsubcat"),
-        parse_mode="HTML"
-    )
-    await state.set_state(AddCategory.selecting_parent)
-    await callback.answer()
-
-@router.callback_query(AddCategory.selecting_parent, F.data.startswith("addsubcat_cat_"))
-async def parent_category_selected(callback: CallbackQuery, state: FSMContext):
-    category_id = int(callback.data.split("_")[-1])
-    category_name = db.get_category_name(category_id)
-    
-    await state.update_data(parent_id=category_id, parent_name=category_name)
-    
-    await callback.message.edit_text(
-        f"✅ Родитель: <b>{category_name}</b>\n\n"
-        "Напишите название подкатегории:\n"
-        "<i>Например: Nike, Adidas, Supreme</i>",
-        parse_mode="HTML"
-    )
-    await state.set_state(AddCategory.waiting_for_name)
-    await callback.answer()
-
-@router.message(AddCategory.waiting_for_name)
-async def process_category_name(message: Message, state: FSMContext):
-    category_name = message.text.strip()
-    
-    if len(category_name) < 2:
-        await message.answer("❌ Название слишком короткое! Минимум 2 символа.")
-        return
-    
-    data = await state.get_data()
-    parent_id = data.get('parent_id')
-    
-    cat_id = await db.add_category(category_name, parent_id)
-    
-    if parent_id:
-        parent_name = data.get('parent_name')
-        success_text = f"✅ Подкатегория <b>'{category_name}'</b> добавлена!\n📂 Путь: {parent_name} → {category_name}"
-    else:
-        success_text = f"✅ Категория <b>'{category_name}'</b> добавлена!"
-    
-    await message.answer(
-        success_text,
-        reply_markup=get_admin_keyboard(),
-        parse_mode="HTML"
-    )
-    await state.clear()
-
-# ===== ДОБАВЛЕНИЕ ТОВАРА =====
-
-@router.callback_query(F.data == "add_product")
-async def start_add_product(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("❌ У вас нет доступа!", show_alert=True)
-        return
-    
-    leaf_categories = db.get_leaf_categories()
-    
-    if not leaf_categories:
-        await callback.message.edit_text(
-            "❌ Сначала создайте категории!",
-            reply_markup=get_back_keyboard("admin_panel"),
-            parse_mode="HTML"
-        )
-        return
-    
-    buttons = []
-    for cat in leaf_categories:
-        buttons.append([InlineKeyboardButton(
-            text=cat['name'],
-            callback_data=f"select_cat_{cat['id']}"
-        )])
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")])
-    
-    await callback.message.edit_text(
-        "➕ <b>Добавление товара</b>\n\nШаг 1/4: Выберите категорию:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-        parse_mode="HTML"
-    )
-    await state.set_state(AddProduct.selecting_category)
-    await callback.answer()
-
-@router.callback_query(AddProduct.selecting_category, F.data.startswith("select_cat_"))
-async def select_product_category(callback: CallbackQuery, state: FSMContext):
-    category_id = int(callback.data.split("_")[-1])
-    category_name = db.get_category_name(category_id)
-    
-    await state.update_data(category_id=category_id, category_name=category_name)
-    
-    await callback.message.edit_text(
-        f"✅ Категория: <b>{category_name}</b>\n\n"
-        "Шаг 2/4: Напишите <b>название товара</b>\n"
-        "<i>Например: Nike Skeleton Purple</i>",
-        parse_mode="HTML"
-    )
-    await state.set_state(AddProduct.waiting_for_name)
-    await callback.answer()
-
-@router.message(AddProduct.waiting_for_name)
-async def process_product_name(message: Message, state: FSMContext):
-    name = message.text.strip()
-    
-    if len(name) < 3:
-        await message.answer("❌ Название слишком короткое! Минимум 3 символа.")
-        return
-    
-    await state.update_data(name=name)
-    
-    await message.answer(
-        f"✅ Название: <b>{name}</b>\n\n"
-        "Шаг 3/4: Напишите <b>описание</b>\n"
-        "<i>Укажите размеры, характеристики и т.д.</i>",
-        parse_mode="HTML"
-    )
-    await state.set_state(AddProduct.waiting_for_description)
-@router.message(AddProduct.waiting_for_description)
-async def process_product_description(message: Message, state: FSMContext):
-    description = message.text.strip()
-    
-    await state.update_data(description=description)
-    
-    await message.answer(
-        "Шаг 4/4: Укажите <b>цену</b> (только число)\n"
-        "<i>Например: 26990</i>",
-        parse_mode="HTML"
-    )
-    await state.set_state(AddProduct.waiting_for_price)
-
-@router.message(AddProduct.waiting_for_price)
-async def process_product_price(message: Message, state: FSMContext):
-    try:
-        price = float(message.text.strip())
-    except ValueError:
-        await message.answer("❌ Введите корректную цену (только число)!")
-        return
-    
-    await state.update_data(price=price)
-    
-    await message.answer(
-        "📸 Отправьте <b>фото товара</b> или напишите /skip чтобы пропустить",
-        parse_mode="HTML"
-    )
-    await state.set_state(AddProduct.waiting_for_photo)
-
-@router.message(AddProduct.waiting_for_photo, F.photo)
-async def process_product_photo(message: Message, state: FSMContext):
-    photo_id = message.photo[-1].file_id
-    await save_product(message, state, photo_id)
-
-@router.message(AddProduct.waiting_for_photo, F.text == "/skip")
-async def skip_product_photo(message: Message, state: FSMContext):
-    await save_product(message, state, None)
-
-async def save_product(message: Message, state: FSMContext, photo_id: Optional[str]):
-    data = await state.get_data()
-    
-    prod_id = await db.add_product(
-        category_id=data['category_id'],
-        name=data['name'],
-        description=data['description'],
-        price=data['price'],
-        photo_id=photo_id
-    )
-    
-    media_status = "📸 С фото" if photo_id else "📝 Без фото"
-    
-    await message.answer(
-        f"✅ <b>Товар добавлен!</b>\n\n"
-        f"🆔 ID: {prod_id}\n"
-        f"📂 Категория: {data['category_name']}\n"
-        f"🛒 Название: {data['name']}\n"
-        f"💰 Цена: {data['price']}₽\n"
-        f"{media_status}",
-        reply_markup=get_admin_keyboard(),
-        parse_mode="HTML"
-    )
-    await state.clear()
-
-# ===== УПРАВЛЕНИЕ =====
-
-@router.callback_query(F.data == "manage_categories")
-async def manage_categories(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("❌ Нет доступа!", show_alert=True)
-        return
-    
-    categories = db.get_all_categories()
-    
-    if not categories:
-        try:
-            await callback.message.edit_text(
-                "📋 Категории отсутствуют",
-                reply_markup=get_back_keyboard("admin_panel"),
-                parse_mode="HTML"
-            )
-        except TelegramBadRequest:
-            pass
-    else:
-        try:
-            await callback.message.edit_text(
-                "📋 <b>Управление категориями</b>\n\nВыберите для удаления:",
-                reply_markup=get_categories_keyboard(parent_id=None, action="delete"),
-                parse_mode="HTML"
-            )
-        except TelegramBadRequest:
-            pass
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("delete_cat_"))
-async def delete_category(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("❌ Нет доступа!", show_alert=True)
-        return
-    
-    category_id = int(callback.data.split("_")[-1])
-    category_name = db.get_category_name(category_id)
-    
-    await db.delete_category(category_id)
-    
-    await callback.answer(f"✅ Категория '{category_name}' удалена!", show_alert=True)
-    await manage_categories(callback)
-
-@router.callback_query(F.data == "manage_products")
-async def manage_products(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("❌ Нет доступа!", show_alert=True)
-        return
-    
-    products = db.get_all_products()
-    
-    if not products:
-        try:
-            await callback.message.edit_text(
-                "📦 Товары отсутствуют",
-                reply_markup=get_back_keyboard("admin_panel"),
-                parse_mode="HTML"
-            )
-        except TelegramBadRequest:
-            pass
-        return
-    
-    buttons = []
-    for prod in products[:20]:
-        stock_emoji = "✅" if prod['in_stock'] else "❌"
-        buttons.append([InlineKeyboardButton(
-            text=f"{stock_emoji} {prod['name']} - {prod['price']}₽",
-            callback_data=f"manageprod_{prod['id']}"
-        )])
-    
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")])
-    
-    try:
-        await callback.message.edit_text(
-            f"📦 <b>Управление товарами</b>\n\nВсего товаров: {len(products)}",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-            parse_mode="HTML"
-        )
-    except TelegramBadRequest:
-        pass
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("manageprod_"))
-async def manage_product_detail(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("❌ Нет доступа!", show_alert=True)
-        return
-    
-    product_id = int(callback.data.split("_")[-1])
-    product = db.get_product(product_id)
-    
-    if not product:
-        await callback.answer("❌ Товар не найден", show_alert=True)
-        return
-    
-    stock_text = "🟢 В наличии" if product['in_stock'] else "🔴 Нет в наличии"
-    
-    buttons = [
-        [InlineKeyboardButton(
-            text="🔄 Переключить наличие",
-            callback_data=f"toggle_stock_{product_id}"
-        )],
-        [InlineKeyboardButton(
-            text="🗑 Удалить товар",
-            callback_data=f"delete_product_{product_id}"
-        )],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="manage_products")]
-    ]
-    
-    try:
-        await callback.message.edit_text(
-            f"📦 <b>{product['name']}</b>\n\n"
-            f"💰 Цена: {product['price']}₽\n"
-            f"📝 Описание: {product['description']}\n"
-            f"📊 Статус: {stock_text}",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-            parse_mode="HTML"
-        )
-    except TelegramBadRequest:
-        pass
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("toggle_stock_"))
-async def toggle_stock(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("❌ Нет доступа!", show_alert=True)
-        return
-    
-    product_id = int(callback.data.split("_")[-1])
-    success = await db.toggle_product_stock(product_id)
-    
-    if success:
-        await callback.answer("✅ Статус изменен!", show_alert=False)
-        # Обновляем информацию о товаре
-        await manage_product_detail(callback)
-    else:
-        await callback.answer("❌ Ошибка изменения статуса", show_alert=True)
-
-@router.callback_query(F.data.startswith("delete_product_"))
-async def delete_product(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("❌ Нет доступа!", show_alert=True)
-        return
-    
-    product_id = int(callback.data.split("_")[-1])
-    product = db.get_product(product_id)
-    
-    if product:
-        await db.delete_product(product_id)
-        await callback.answer(f"✅ Товар '{product['name']}' удален!", show_alert=True)
-        await manage_products(callback)
-    else:
-        await callback.answer("❌ Товар не найден!", show_alert=True)
-
-# ==================== КОМАНДЫ ====================
-
-@router.message(Command("getid"))
-async def cmd_get_id(message: Message):
-    """Получить ID чата"""
-    chat_id = message.chat.id
-    chat_type = message.chat.type
-    chat_title = getattr(message.chat, 'title', 'ЛС')
-    
-    info_text = f"""
-📊 <b>Информация о чате:</b>
-🆔 <b>ID:</b> <code>{chat_id}</code>
-📝 <b>Тип:</b> {chat_type}
-🏷️ <b>Название:</b> {chat_title}
-
-<b>Используйте этот ID в .env файле!</b>
-"""
-    await message.answer(info_text, parse_mode="HTML")
-
-@router.message(Command("test"))
-async def cmd_test(message: Message):
-    """Тест отправки сообщения в группу"""
-    try:
-        await bot.send_message(
-            chat_id=ORDER_CHANNEL_ID,
-            text="🟢 ТЕСТ: Бот может отправлять сообщения в группу!"
-        )
-        await message.answer("✅ Тестовое сообщение отправлено в группу")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-
-@router.message(Command("test_order"))
-async def cmd_test_order(message: Message):
-    """Тест создания заказа"""
-    try:
-        # Тестовый заказ
-        order_id = db.create_order(
-            user_id=message.from_user.id,
-            username=message.from_user.username or 'test',
-            items=json.dumps([{"name": "Тестовый товар", "price": 1000, "quantity": 1}]),
-            total_price=1000
-        )
-        
-        # Пробуем отправить в группу
-        test_text = f"""
-🧪 <b>ТЕСТОВЫЙ ЗАКАЗ #{order_id}</b>
-
-👤 Пользователь: {message.from_user.first_name} (ID: {message.from_user.id})
-💰 Сумма: 1000₽
-⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
-
-✅ Проверка отправки в группу работает!
-"""
-        
-        await bot.send_message(
-            chat_id=ORDER_CHANNEL_ID,
-            text=test_text,
-            parse_mode="HTML"
-        )
-        
-        await message.answer(f"✅ Тестовый заказ #{order_id} создан и отправлен в группу")
-        
-    except Exception as e:
-        await message.answer(f"❌ Ошибка теста: {e}")
-
-@router.message(Command("fake_order"))
-async def cmd_fake_order(message: Message):
-    """Создание тестового заказа как из WebApp"""
-    print("🟢 ТЕСТ: Создание fake заказа...")
-    
-    # Создаем тестовый заказ напрямую в БД (имитация WebApp)
-    test_items = [
-        {
-            "id": 1,
-            "name": "Nike Skeleton Purple",
-            "price": 9999.0,
-            "quantity": 2
-        },
-        {
-            "id": 2, 
-            "name": "Тестовый товар",
-            "price": 19999.0,
-            "quantity": 1
-        }
-    ]
-    
-    total_price = sum(item['price'] * item['quantity'] for item in test_items)
-    
-    order_id = db.create_order(
-        user_id=message.from_user.id,
-        username=message.from_user.username or 'test_user',
-        items=json.dumps(test_items, ensure_ascii=False),
-        total_price=total_price
-    )
-    
-    # Отправляем в группу
-    order_text = f"""
-🛒 <b>ТЕСТОВЫЙ ЗАКАЗ ИЗ FAKE_ORDER #{order_id}</b>
-
-👤 <b>Клиент:</b>
-├ Имя: {message.from_user.first_name}
-├ ID: {message.from_user.id}
-└ @{message.from_user.username or 'нет username'}
-
-📦 <b>Заказ:</b>
-• Nike Skeleton Purple - 2шт. × 9999₽ = 19998₽
-• Тестовый товар - 1шт. × 19999₽ = 19999₽
-
-💰 <b>ИТОГО: {total_price}₽</b>
-
-⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
-
-🆔 <b>Заказ #{order_id}</b>
-"""
-    
-    await bot.send_message(
-        chat_id=ORDER_CHANNEL_ID,
-        text=order_text,
-        parse_mode="HTML"
-    )
-    
-    await message.answer(f"✅ Fake заказ #{order_id} создан и отправлен в группу!")
-    print(f"✅ Fake заказ #{order_id} завершен")
-
-# ==================== ДИАГНОСТИКА WEBAPP ====================
-
-@router.message(Command("debug_webapp"))
-async def cmd_debug_webapp(message: Message):
-    """Диагностика WebApp"""
-    debug_info = f"""
-🔍 <b>ДИАГНОСТИКА WEBAPP</b>
-
-🤖 <b>Бот:</b> @webtest1262_bot
-🌐 <b>WebApp URL:</b> {WEBAPP_URL}
-👤 <b>Admin ID:</b> {ADMIN_ID}
-📦 <b>Канал заказов:</b> {ORDER_CHANNEL_ID}
-
-📊 <b>Статистика:</b>
-├ Товаров в БД: {len(db.get_all_products())}
-├ Категорий в БД: {len(db.get_all_categories())}
-└ Заказов в БД: {len([row for row in db.get_connection().cursor().execute("SELECT id FROM orders").fetchall()])}
-
-🛠 <b>Проверки:</b>
-├ WebApp URL доступен: {'✅' if WEBAPP_URL.startswith('https://') else '❌'}
-├ Бот запущен: ✅
-├ API сервер работает: ✅
-└ Канал настроен: {'✅' if ORDER_CHANNEL_ID else '❌'}
-"""
-    await message.answer(debug_info, parse_mode="HTML")
-# ==================== УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ДЛЯ ДИАГНОСТИКИ ====================
-
-@router.message()
-async def universal_debug_handler(message: Message):
-    """УНИВЕРСАЛЬНЫЙ обработчик для отладки ВСЕХ сообщений"""
-    print(f"\n🔴 UNIVERSAL_DEBUG: Получено сообщение!")
-    print(f"🔴 Тип: {message.content_type}")
-    print(f"🔴 От: {message.from_user.id} ({message.from_user.first_name})")
-    print(f"🔴 Текст: {message.text}")
-    print(f"🔴 Есть web_app_data: {hasattr(message, 'web_app_data')}")
-    
-    if hasattr(message, 'web_app_data') and message.web_app_data:
-        print(f"🚨🚨🚨 WEBAPP ДАННЫЕ ОБНАРУЖЕНЫ В УНИВЕРСАЛЬНОМ ОБРАБОТЧИКЕ! 🚨🚨🚨")
-        print(f"🚨 Данные: {message.web_app_data}")
-        print(f"🚨 Data: {message.web_app_data.data}")
-        
-        # Вызываем обработчик WebApp данных
-        await handle_web_app_data(message)
-    else:
-        print(f"🔴 Нет web_app_data, пропускаем...")
-
-# ==================== WEBAPP ОБРАБОТЧИК ====================
-
+# ==================== ОДИН ПРАВИЛЬНЫЙ ОБРАБОТЧИК WEBAPP ====================
 @router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
-    """Обработчик WebApp данных"""
-    print(f"🚨 WEBAPP ДАННЫЕ ПОЛУЧЕНЫ В СПЕЦИАЛЬНОМ ОБРАБОТЧИКЕ!")
-    print(f"🟢 От: {message.from_user.id} ({message.from_user.first_name})")
+    """ЕДИНСТВЕННЫЙ обработчик данных из WebApp"""
+    logger.info(f"🟢 WebApp данные получены от {message.from_user.id}")
     
     try:
-        if not message.web_app_data or not message.web_app_data.data:
-            print("❌ Нет данных в web_app_data")
-            await message.answer("❌ Ошибка: нет данных заказа")
+        data = json.loads(message.web_app_data.data)
+        logger.info(f"📦 Данные: {data}")
+        
+        if data.get('type') != 'order':
+            await message.answer("❌ Неизвестный тип данных")
             return
         
-        data_str = message.web_app_data.data
-        print(f"🟢 Сырые данные: {data_str}")
-        
-        # Парсим JSON
-        data = json.loads(data_str)
-        print(f"🟢 JSON данные: {data}")
-        
-        if data.get('type') == 'order':
-            items = data.get('items', [])
-            total_price = data.get('total_price', 0)
-            
-            print(f"🟢 ЗАКАЗ ОБНАРУЖЕН! Товаров: {len(items)}, Сумма: {total_price}₽")
-            
-            if not items:
-                await message.answer("❌ Ошибка: пустой заказ")
-                return
-            
-            # Формируем детали заказа
-            order_details = []
-            for item in items:
-                item_total = item['price'] * item['quantity']
-                order_details.append(
-                    f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item_total}₽"
-                )
-            
-            order_text = f"""
-🛒 <b>НОВЫЙ ЗАКАЗ ИЗ WEBAPP!</b>
-
-👤 <b>Клиент:</b>
-├ Имя: {message.from_user.first_name}
-├ ID: {message.from_user.id}
-└ @{message.from_user.username or 'нет username'}
-
-📦 <b>Заказ:</b>
-{chr(10).join(order_details)}
-
-💰 <b>ИТОГО: {total_price}₽</b>
-
-⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
-"""
-            
-            # Создаем заказ в БД
-            order_id = db.create_order(
-                user_id=message.from_user.id,
-                username=message.from_user.username or '',
-                items=json.dumps(items, ensure_ascii=False),
-                total_price=total_price
-            )
-            
-            order_text += f"\n\n🆔 <b>Заказ #{order_id}</b>"
-            
-            print(f"🟢 Заказ #{order_id} создан в БД")
-            
-            # Отправляем в группу
-            try:
-                await bot.send_message(
-                    chat_id=ORDER_CHANNEL_ID,
-                    text=order_text,
-                    parse_mode="HTML"
-                )
-                print(f"✅ Заказ #{order_id} отправлен в группу")
-                
-            except Exception as channel_error:
-                print(f"❌ Ошибка отправки в группу: {channel_error}")
-            
-            # Уведомляем пользователя
-            await message.answer(
-                f"✅ <b>Заказ #{order_id} успешно оформлен!</b>\n\n"
-                f"💰 Сумма: <b>{total_price}₽</b>\n"
-                f"📦 Товаров: <b>{len(items)}</b>\n\n"
-                "📞 С вами свяжутся в течение 5-15 минут!",
-                parse_mode="HTML"
-            )
-            
-            print(f"✅ Пользователь уведомлен о заказе #{order_id}")
-            
-        else:
-            print(f"❌ Неизвестный тип данных: {data.get('type')}")
-            await message.answer("❌ Неизвестный тип данных")
-            
-    except Exception as e:
-        print(f"❌ Ошибка обработки: {e}")
-        await message.answer("❌ Ошибка обработки заказа")
-# ПРОСТОЙ обработчик WebApp данных - УДАЛИТЕ ВСЕ ДУБЛИ
-@router.message(F.web_app_data)
-async def handle_web_app_data_simple(message: Message):
-    """ПРОСТОЙ обработчик WebApp данных"""
-    print(f"🚨 WEBAPP ДАННЫЕ ПОЛУЧЕНЫ!")
-    print(f"🟢 От: {message.from_user.id} ({message.from_user.first_name})")
-    
-    try:
-        if not message.web_app_data or not message.web_app_data.data:
-            print("❌ Нет данных в web_app_data")
-            await message.answer("❌ Ошибка: нет данных заказа")
-            return
-        
-        data_str = message.web_app_data.data
-        print(f"🟢 Сырые данные: {data_str}")
-        
-        # Парсим JSON
-        data = json.loads(data_str)
-        print(f"🟢 JSON данные: {data}")
-        
-        if data.get('type') == 'order':
-            items = data.get('items', [])
-            total_price = data.get('total_price', 0)
-            
-            print(f"🟢 ЗАКАЗ ОБНАРУЖЕН!")
-            print(f"🟢 Товаров: {len(items)}, Сумма: {total_price}₽")
-            
-            if not items:
-                await message.answer("❌ Ошибка: пустой заказ")
-                return
-            
-            # Формируем детали заказа
-            order_details = []
-            for item in items:
-                item_total = item['price'] * item['quantity']
-                order_details.append(
-                    f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item_total}₽"
-                )
-            
-            order_text = f"""
-🛒 <b>НОВЫЙ ЗАКАЗ ИЗ WEBAPP!</b>
-
-👤 <b>Клиент:</b>
-├ Имя: {message.from_user.first_name}
-├ ID: {message.from_user.id}
-└ @{message.from_user.username or 'нет username'}
-
-📦 <b>Заказ:</b>
-{chr(10).join(order_details)}
-
-💰 <b>ИТОГО: {total_price}₽</b>
-
-⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
-"""
-            
-            # Создаем заказ в БД
-            order_id = db.create_order(
-                user_id=message.from_user.id,
-                username=message.from_user.username or '',
-                items=json.dumps(items, ensure_ascii=False),
-                total_price=total_price
-            )
-            
-            order_text += f"\n\n🆔 <b>Заказ #{order_id}</b>"
-            
-            print(f"🟢 Заказ #{order_id} создан в БД")
-            
-            # Отправляем в группу
-            try:
-                await bot.send_message(
-                    chat_id=ORDER_CHANNEL_ID,
-                    text=order_text,
-                    parse_mode="HTML"
-                )
-                print(f"✅ Заказ #{order_id} отправлен в группу {ORDER_CHANNEL_ID}")
-                
-            except Exception as channel_error:
-                print(f"❌ Ошибка отправки в группу: {channel_error}")
-                await bot.send_message(
-                    chat_id=ADMIN_ID,
-                    text=f"❌ Ошибка отправки заказа:\n{channel_error}"
-                )
-            
-            # Уведомляем пользователя
-            await message.answer(
-                f"✅ <b>Заказ #{order_id} успешно оформлен!</b>\n\n"
-                f"💰 Сумма: <b>{total_price}₽</b>\n"
-                f"📦 Товаров: <b>{len(items)}</b>\n\n"
-                "📞 С вами свяжутся в течение 5-15 минут!",
-                parse_mode="HTML"
-            )
-            
-            print(f"✅ Пользователь уведомлен о заказе #{order_id}")
-            
-        else:
-            print(f"❌ Неизвестный тип данных: {data.get('type')}")
-            await message.answer("❌ Неизвестный тип данных")
-            
-    except json.JSONDecodeError as e:
-        print(f"❌ Ошибка JSON: {e}")
-        await message.answer("❌ Ошибка формата данных заказа")
-    except Exception as e:
-        print(f"❌ Общая ошибка: {e}")
-        await message.answer("❌ Ошибка обработки заказа")
-
-# УЛУЧШЕННЫЙ обработчик WebApp данных
-@router.message(F.web_app_data)
-async def handle_web_app_data_debug(message: Message):
-    """ДИАГНОСТИЧЕСКИЙ обработчик данных из Mini App"""
-    print(f"🚨🚨🚨 WEBAPP ДАННЫЕ ПОЛУЧЕНЫ! 🚨🚨🚨")
-    print(f"🟢 От: {message.from_user.id} ({message.from_user.first_name})")
-    print(f"🟢 Chat ID: {message.chat.id}")
-    print(f"🟢 Тип чата: {message.chat.type}")
-    print(f"🟢 Есть web_app_data: {hasattr(message, 'web_app_data')}")
-    
-    if hasattr(message, 'web_app_data') and message.web_app_data:
-        print(f"🟢 web_app_data.data: {message.web_app_data.data}")
-        print(f"🟢 web_app_data.button_text: {getattr(message.web_app_data, 'button_text', 'N/A')}")
-        
-        try:
-            # Вызываем основной обработчик
-            await handle_web_app_data(message)
-        except Exception as e:
-            print(f"❌ Ошибка в обработчике: {e}")
-            await message.answer(f"❌ Ошибка обработки заказа: {e}")
-    else:
-        print("❌ Нет web_app_data в сообщении")
-        await message.answer("❌ Нет данных заказа")
-
-# УБЕДИТЕСЬ что этот обработчик ЕСТЬ в вашем коде:
-@router.message(F.web_app_data)
-async def handle_web_app_data(message: Message):
-    """ОСНОВНОЙ обработчик данных из Mini App"""
-    print(f"🟢 WEBAPP ДАННЫЕ ПОЛУЧЕНЫ В ОСНОВНОМ ОБРАБОТЧИКЕ!")
-    
-    try:
-        if not message.web_app_data or not message.web_app_data.data:
-            print("❌ Нет данных в web_app_data")
-            await message.answer("❌ Ошибка: нет данных заказа")
-            return
-        
-        data_str = message.web_app_data.data
-        print(f"🟢 Сырые данные: {data_str}")
-        
-        # Парсим JSON
-        data = json.loads(data_str)
-        print(f"🟢 JSON данные: {data}")
-        
-        if data.get('type') == 'order':
-            items = data.get('items', [])
-            total_price = data.get('total_price', 0)
-            
-            print(f"🟢 ЗАКАЗ ОБНАРУЖЕН!")
-            print(f"🟢 Товаров: {len(items)}, Сумма: {total_price}₽")
-            
-            if not items:
-                await message.answer("❌ Ошибка: пустой заказ")
-                return
-            
-            # Формируем детали заказа
-            order_details = []
-            for item in items:
-                item_total = item['price'] * item['quantity']
-                order_details.append(
-                    f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item_total}₽"
-                )
-            
-            order_text = f"""
-🛒 <b>НОВЫЙ ЗАКАЗ ИЗ WEBAPP!</b>
-
-👤 <b>Клиент:</b>
-├ Имя: {message.from_user.first_name}
-├ ID: {message.from_user.id}
-└ @{message.from_user.username or 'нет username'}
-
-📦 <b>Заказ:</b>
-{chr(10).join(order_details)}
-
-💰 <b>ИТОГО: {total_price}₽</b>
-
-⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
-"""
-            
-            # Создаем заказ в БД
-            order_id = db.create_order(
-                user_id=message.from_user.id,
-                username=message.from_user.username or '',
-                items=json.dumps(items, ensure_ascii=False),
-                total_price=total_price
-            )
-            
-            order_text += f"\n\n🆔 <b>Заказ #{order_id}</b>"
-            
-            print(f"🟢 Заказ #{order_id} создан в БД")
-            
-            # Отправляем в группу
-            try:
-                await bot.send_message(
-                    chat_id=ORDER_CHANNEL_ID,
-                    text=order_text,
-                    parse_mode="HTML"
-                )
-                print(f"✅ Заказ #{order_id} отправлен в группу {ORDER_CHANNEL_ID}")
-                
-            except Exception as channel_error:
-                print(f"❌ Ошибка отправки в группу: {channel_error}")
-                await bot.send_message(
-                    chat_id=ADMIN_ID,
-                    text=f"❌ Ошибка отправки заказа:\n{channel_error}"
-                )
-            
-            # Уведомляем пользователя
-            await message.answer(
-                f"✅ <b>Заказ #{order_id} успешно оформлен!</b>\n\n"
-                f"💰 Сумма: <b>{total_price}₽</b>\n"
-                f"📦 Товаров: <b>{len(items)}</b>\n\n"
-                "📞 С вами свяжутся в течение 5-15 минут!",
-                parse_mode="HTML"
-            )
-            
-            print(f"✅ Пользователь уведомлен о заказе #{order_id}")
-            
-        else:
-            print(f"❌ Неизвестный тип данных: {data.get('type')}")
-            await message.answer("❌ Неизвестный тип данных")
-            
-    except json.JSONDecodeError as e:
-        print(f"❌ Ошибка JSON: {e}")
-        await message.answer("❌ Ошибка формата данных заказа")
-    except Exception as e:
-        print(f"❌ Общая ошибка: {e}")
-        await message.answer("❌ Ошибка обработки заказа")
-# ==================== API ДЛЯ ПРЯМОЙ ОТПРАВКИ ЗАКАЗОВ ====================
-
-async def create_order_api(request):
-    """API для прямого создания заказов из WebApp"""
-    try:
-        data = await request.json()
-        print(f"🟢 ЗАКАЗ ИЗ API ПОЛУЧЕН!: {data}")
-        
-        user_id = data.get('user_id')
         items = data.get('items', [])
         total_price = data.get('total_price', 0)
         
-        if not user_id or not items:
-            return web.json_response({'error': 'Invalid data'}, status=400)
+        if not items:
+            await message.answer("❌ Пустой заказ")
+            return
         
         # Создаем заказ в БД
         order_id = db.create_order(
-            user_id=user_id,
-            username=data.get('username', ''),
+            user_id=message.from_user.id,
+            username=message.from_user.username or '',
             items=json.dumps(items, ensure_ascii=False),
             total_price=total_price
         )
         
-        # Формируем сообщение для группы
-        order_details = []
-        for item in items:
-            item_total = item['price'] * item['quantity']
-            order_details.append(f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item_total}₽")
+        # Формируем сообщение
+        order_details = '\n'.join([
+            f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item['price'] * item['quantity']}₽"
+            for item in items
+        ])
         
-        order_text = f"""
-🛒 <b>НОВЫЙ ЗАКАЗ ИЗ WEBAPP!</b>
+        order_text = f"""🛒 <b>НОВЫЙ ЗАКАЗ #{order_id}</b>
 
 👤 <b>Клиент:</b>
-├ Имя: {data.get('first_name', 'Unknown')}
-├ ID: {user_id}
-└ @{data.get('username', 'нет username')}
+├ Имя: {message.from_user.first_name}
+├ ID: {message.from_user.id}
+└ @{message.from_user.username or 'нет username'}
 
 📦 <b>Заказ:</b>
-{chr(10).join(order_details)}
+{order_details}
 
 💰 <b>ИТОГО: {total_price}₽</b>
 
-⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
-
-🆔 <b>Заказ #{order_id}</b>
-"""
+⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
         
-        # Отправляем в группу
-        await bot.send_message(
-            chat_id=ORDER_CHANNEL_ID,
-            text=order_text,
+        # Отправляем в канал/группу
+        try:
+            await bot.send_message(chat_id=ORDER_CHANNEL_ID, text=order_text, parse_mode="HTML")
+            logger.info(f"✅ Заказ #{order_id} отправлен в {ORDER_CHANNEL_ID}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки в канал: {e}")
+            await bot.send_message(chat_id=ADMIN_ID, text=f"❌ Ошибка отправки заказа:\n{e}")
+        
+        # Уведомляем пользователя
+        await message.answer(
+            f"""✅ <b>Заказ #{order_id} успешно оформлен!</b>
+
+💰 Сумма: <b>{total_price}₽</b>
+📦 Товаров: <b>{len(items)}</b>
+
+📞 С вами свяжутся в течение 5-15 минут!""",
             parse_mode="HTML"
         )
         
-        print(f"✅ Заказ #{order_id} создан через API и отправлен в группу")
-        return web.json_response({'order_id': order_id, 'status': 'success'})
-        
     except Exception as e:
-        print(f"❌ Ошибка API: {e}")
-        return web.json_response({'error': str(e)}, status=500)
+        logger.error(f"❌ Ошибка обработки: {e}")
+        await message.answer("❌ Ошибка обработки заказа")
 
-# В функции start_api_server добавь:
-async def start_api_server():
-    """Запуск API сервера"""
-    app = web.Application()
-    
-    cors = aiohttp_cors.setup(app, defaults={
-        "*": aiohttp_cors.ResourceOptions(
-            allow_credentials=True,
-            expose_headers="*",
-            allow_headers="*",
-        )
-    })
-    
-    cors.add(app.router.add_get('/api/products', get_products_api))
-    cors.add(app.router.add_get('/api/categories', get_categories_api))
-    cors.add(app.router.add_post('/api/order', create_order_api))  # ← ДОБАВЬ ЭТУ СТРОЧКУ
-    
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8080)
-    await site.start()
-    logger.info("🌐 API сервер запущен на http://0.0.0.0:8080")
-# ==================== API ДЛЯ MINI APP ====================
+# ==================== КОМАНДЫ ====================
+@router.message(Command("getid"))
+async def cmd_get_id(message: Message):
+    await message.answer(
+        f"""📊 <b>Информация о чате:</b>
+🆔 <b>ID:</b> <code>{message.chat.id}</code>
+📝 <b>Тип:</b> {message.chat.type}
+🏷️ <b>Название:</b> {getattr(message.chat, 'title', 'ЛС')}
 
-from aiohttp import web
-import aiohttp_cors
+<b>Используйте этот ID в .env файле!</b>""",
+        parse_mode="HTML"
+    )
 
+# ==================== API СЕРВЕР ====================
 async def get_products_api(request):
-    """API для получения товаров"""
     products = db.get_all_products()
-    
     for product in products:
         if product['photo_id']:
             try:
@@ -1483,26 +467,16 @@ async def get_products_api(request):
                 product['photo_url'] = None
         else:
             product['photo_url'] = None
-    
     return web.json_response(products)
 
 async def get_categories_api(request):
-    """API для получения категорий"""
-    categories = db.get_all_categories()
-    return web.json_response(categories)
+    return web.json_response(db.get_all_categories())
 
 async def start_api_server():
-    """Запуск API сервера для Mini App"""
     app = web.Application()
-    
     cors = aiohttp_cors.setup(app, defaults={
-        "*": aiohttp_cors.ResourceOptions(
-            allow_credentials=True,
-            expose_headers="*",
-            allow_headers="*",
-        )
+        "*": aiohttp_cors.ResourceOptions(allow_credentials=True, expose_headers="*", allow_headers="*")
     })
-    
     cors.add(app.router.add_get('/api/products', get_products_api))
     cors.add(app.router.add_get('/api/categories', get_categories_api))
     
@@ -1512,22 +486,9 @@ async def start_api_server():
     await site.start()
     logger.info("🌐 API сервер запущен на http://0.0.0.0:8080")
 
-# ==================== ОБРАБОТКА ОШИБОК ====================
-
-@router.errors()
-async def errors_handler(event, exception):
-    """ИСПРАВЛЕННЫЙ обработчик ошибок"""
-    if isinstance(exception, TelegramBadRequest):
-        if "message is not modified" in str(exception):
-            logger.debug("Игнорируем 'message is not modified'")
-            return True
-    
-    logger.error(f"Необработанная ошибка: {exception}")
-    return True
-
 # ==================== ЗАПУСК ====================
-
-async def on_startup():
+async def main():
+    dp.include_router(router)
     logger.info("=" * 50)
     logger.info("🤖 Telegram Mini App Shop Bot")
     logger.info("=" * 50)
@@ -1536,26 +497,13 @@ async def on_startup():
     logger.info(f"🌐 WebApp URL: {WEBAPP_URL}")
     logger.info(f"📦 Order Channel: {ORDER_CHANNEL_ID}")
     logger.info("=" * 50)
-
-async def on_shutdown():
-    logger.info("🛑 Бот остановлен")
-
-async def main():
-    dp.include_router(router)
     
-    await on_startup()
     await start_api_server()
     
     try:
         await dp.start_polling(bot, skip_updates=True)
-    finally:
-        await on_shutdown()
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("⚠️ Бот остановлен (Ctrl+C)")
-    except Exception as e:
-        logger.error(f"❌ Критическая ошибка: {e}")
-        raise
+
+if __name__ == "__main__":
+    asyncio.run(main())
