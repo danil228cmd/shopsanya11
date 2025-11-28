@@ -29,15 +29,15 @@ load_env()
 
 # Настройки
 TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
-WEBAPP_URL = os.getenv("WEBAPP_URL")
+ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://your-webapp-url.com")
 ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID")
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Инициализация
+# Инициализация бота без прокси (убрали проблемный прокси)
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
@@ -55,52 +55,60 @@ class Database:
         return conn
     
     def init_db(self):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''CREATE TABLE IF NOT EXISTS categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            parent_id INTEGER DEFAULT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (parent_id) REFERENCES categories (id) ON DELETE CASCADE
-        )''')
-        
-        cursor.execute('''CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            category_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            description TEXT,
-            price REAL NOT NULL,
-            photo_id TEXT,
-            in_stock BOOLEAN DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE CASCADE
-        )''')
-        
-        cursor.execute('''CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            username TEXT,
-            items TEXT NOT NULL,
-            total_price REAL NOT NULL,
-            status TEXT DEFAULT 'new',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-        
-        conn.commit()
-        conn.close()
-        logger.info("✅ База данных инициализирована")
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                parent_id INTEGER DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (parent_id) REFERENCES categories (id) ON DELETE CASCADE
+            )''')
+            
+            cursor.execute('''CREATE TABLE IF NOT EXISTS products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                price REAL NOT NULL,
+                photo_id TEXT,
+                in_stock BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE CASCADE
+            )''')
+            
+            cursor.execute('''CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                username TEXT,
+                items TEXT NOT NULL,
+                total_price REAL NOT NULL,
+                status TEXT DEFAULT 'new',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )''')
+            
+            conn.commit()
+            logger.info("✅ База данных инициализирована")
+        except Exception as e:
+            logger.error(f"❌ Ошибка инициализации БД: {e}")
+        finally:
+            conn.close()
     
     def clear_all_data(self):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM products")
-        cursor.execute("DELETE FROM categories")
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('products', 'categories')")
-        conn.commit()
-        conn.close()
-        logger.info("🗑️ Все данные очищены")
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM products")
+            cursor.execute("DELETE FROM categories")
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('products', 'categories')")
+            conn.commit()
+            logger.info("🗑️ Все данные очищены")
+        except Exception as e:
+            logger.error(f"❌ Ошибка очистки данных: {e}")
+        finally:
+            conn.close()
     
     async def export_to_json(self):
         try:
@@ -112,11 +120,13 @@ class Database:
                     try:
                         file = await bot.get_file(product['photo_id'])
                         product['photo_url'] = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
-                    except:
+                    except Exception as e:
+                        logger.warning(f"⚠️ Не удалось получить фото для товара {product['id']}: {e}")
                         product['photo_url'] = None
                 else:
                     product['photo_url'] = None
                 
+                # Удаляем лишние поля
                 product.pop('category_name', None)
                 product.pop('photo_id', None)
             
@@ -136,132 +146,196 @@ class Database:
     
     # Категории
     async def add_category(self, name: str, parent_id: Optional[int] = None) -> int:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO categories (name, parent_id) VALUES (?, ?)", (name, parent_id))
-        cat_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        await self.export_to_json()
-        return cat_id
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO categories (name, parent_id) VALUES (?, ?)", (name, parent_id))
+            cat_id = cursor.lastrowid
+            conn.commit()
+            await self.export_to_json()
+            return cat_id
+        except Exception as e:
+            logger.error(f"❌ Ошибка добавления категории: {e}")
+            raise
+        finally:
+            conn.close()
     
     def get_root_categories(self) -> List[dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, name FROM categories WHERE parent_id IS NULL ORDER BY name")
-        categories = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return categories
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, name FROM categories WHERE parent_id IS NULL ORDER BY name")
+            categories = [dict(row) for row in cursor.fetchall()]
+            return categories
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения корневых категорий: {e}")
+            return []
+        finally:
+            conn.close()
     
     def get_subcategories(self, parent_id: int) -> List[dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, name FROM categories WHERE parent_id = ? ORDER BY name", (parent_id,))
-        categories = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return categories
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, name FROM categories WHERE parent_id = ? ORDER BY name", (parent_id,))
+            categories = [dict(row) for row in cursor.fetchall()]
+            return categories
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения подкатегорий: {e}")
+            return []
+        finally:
+            conn.close()
     
     def get_all_categories(self) -> List[dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, name, parent_id FROM categories ORDER BY parent_id, name")
-        categories = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return categories
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, name, parent_id FROM categories ORDER BY parent_id, name")
+            categories = [dict(row) for row in cursor.fetchall()]
+            return categories
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения всех категорий: {e}")
+            return []
+        finally:
+            conn.close()
     
     def get_category_name(self, category_id: int) -> Optional[str]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM categories WHERE id = ?", (category_id,))
-        result = cursor.fetchone()
-        conn.close()
-        return result[0] if result else None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM categories WHERE id = ?", (category_id,))
+            result = cursor.fetchone()
+            return result[0] if result else None
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения названия категории: {e}")
+            return None
+        finally:
+            conn.close()
     
     async def delete_category(self, category_id: int) -> bool:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
-        conn.commit()
-        conn.close()
-        await self.export_to_json()
-        return True
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+            conn.commit()
+            await self.export_to_json()
+            return True
+        except Exception as e:
+            logger.error(f"❌ Ошибка удаления категории: {e}")
+            return False
+        finally:
+            conn.close()
     
     def get_leaf_categories(self) -> List[dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""SELECT c.id, c.name, c.parent_id FROM categories c
-            WHERE NOT EXISTS (SELECT 1 FROM categories WHERE parent_id = c.id)
-            ORDER BY c.name""")
-        categories = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return categories
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""SELECT c.id, c.name, c.parent_id FROM categories c
+                WHERE NOT EXISTS (SELECT 1 FROM categories WHERE parent_id = c.id)
+                ORDER BY c.name""")
+            categories = [dict(row) for row in cursor.fetchall()]
+            return categories
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения конечных категорий: {e}")
+            return []
+        finally:
+            conn.close()
     
     # Товары
     async def add_product(self, category_id: int, name: str, description: str, 
                     price: float, photo_id: Optional[str] = None) -> int:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""INSERT INTO products (category_id, name, description, price, photo_id, in_stock)
-            VALUES (?, ?, ?, ?, ?, 1)""", (category_id, name, description, price, photo_id))
-        prod_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        await self.export_to_json()
-        return prod_id
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""INSERT INTO products (category_id, name, description, price, photo_id, in_stock)
+                VALUES (?, ?, ?, ?, ?, 1)""", (category_id, name, description, price, photo_id))
+            prod_id = cursor.lastrowid
+            conn.commit()
+            await self.export_to_json()
+            return prod_id
+        except Exception as e:
+            logger.error(f"❌ Ошибка добавления товара: {e}")
+            raise
+        finally:
+            conn.close()
     
     def get_all_products(self) -> List[dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""SELECT p.id, p.name, p.description, p.price, p.photo_id, 
-            p.category_id, p.in_stock, c.name as category_name
-            FROM products p LEFT JOIN categories c ON p.category_id = c.id
-            ORDER BY p.created_at DESC""")
-        products = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        return products
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""SELECT p.id, p.name, p.description, p.price, p.photo_id, 
+                p.category_id, p.in_stock, c.name as category_name
+                FROM products p LEFT JOIN categories c ON p.category_id = c.id
+                ORDER BY p.created_at DESC""")
+            products = [dict(row) for row in cursor.fetchall()]
+            return products
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения товаров: {e}")
+            return []
+        finally:
+            conn.close()
     
     def get_product(self, product_id: int) -> Optional[dict]:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
-        result = cursor.fetchone()
-        conn.close()
-        return dict(result) if result else None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+            result = cursor.fetchone()
+            return dict(result) if result else None
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения товара: {e}")
+            return None
+        finally:
+            conn.close()
     
     async def delete_product(self, product_id: int) -> bool:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
-        conn.commit()
-        conn.close()
-        await self.export_to_json()
-        return True
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
+            conn.commit()
+            await self.export_to_json()
+            return True
+        except Exception as e:
+            logger.error(f"❌ Ошибка удаления товара: {e}")
+            return False
+        finally:
+            conn.close()
     
     async def toggle_product_stock(self, product_id: int) -> bool:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT in_stock FROM products WHERE id = ?", (product_id,))
-        result = cursor.fetchone()
-        if not result:
-            conn.close()
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT in_stock FROM products WHERE id = ?", (product_id,))
+            result = cursor.fetchone()
+            if not result:
+                return False
+            new_stock = 0 if result[0] else 1
+            cursor.execute("UPDATE products SET in_stock = ? WHERE id = ?", (new_stock, product_id))
+            conn.commit()
+            await self.export_to_json()
+            return True
+        except Exception as e:
+            logger.error(f"❌ Ошибка изменения статуса товара: {e}")
             return False
-        new_stock = 0 if result[0] else 1
-        cursor.execute("UPDATE products SET in_stock = ? WHERE id = ?", (new_stock, product_id))
-        conn.commit()
-        conn.close()
-        await self.export_to_json()
-        return True
+        finally:
+            conn.close()
     
     # Заказы
     def create_order(self, user_id: int, username: str, items: str, total_price: float) -> int:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO orders (user_id, username, items, total_price) VALUES (?, ?, ?, ?)",
-            (user_id, username, items, total_price))
-        order_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return order_id
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO orders (user_id, username, items, total_price) VALUES (?, ?, ?, ?)",
+                (user_id, username, items, total_price))
+            order_id = cursor.lastrowid
+            conn.commit()
+            return order_id
+        except Exception as e:
+            logger.error(f"❌ Ошибка создания заказа: {e}")
+            raise
+        finally:
+            conn.close()
 
 db = Database()
 
@@ -310,6 +384,9 @@ def get_categories_keyboard(parent_id: Optional[int] = None, action: str = "sele
 
 def get_back_keyboard(callback: str = "admin_panel") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data=callback)]])
+
+def get_cancel_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="admin_panel")]])
 
 # ==================== ХЕНДЛЕРЫ ====================
 @router.message(CommandStart())
@@ -370,14 +447,332 @@ async def show_admin_panel(callback: CallbackQuery, state: FSMContext):
         pass
     await callback.answer()
 
+# ==================== FSM ХЕНДЛЕРЫ ДЛЯ АДМИНКИ ====================
+@router.callback_query(F.data == "add_category")
+async def add_category_start(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    await callback.message.edit_text(
+        "📁 <b>Добавление категории</b>\n\nВыберите тип категории:",
+        reply_markup=get_category_type_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("addcat_"))
+async def add_category_type(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    cat_type = callback.data.replace("addcat_", "")
+    
+    if cat_type == "root":
+        await state.set_state(AddCategory.waiting_for_name)
+        await callback.message.edit_text(
+            "📝 <b>Введите название основной категории:</b>",
+            reply_markup=get_cancel_keyboard(),
+            parse_mode="HTML"
+        )
+    elif cat_type == "sub":
+        await state.set_state(AddCategory.selecting_parent)
+        await callback.message.edit_text(
+            "📁 <b>Выберите родительскую категорию:</b>",
+            reply_markup=get_categories_keyboard(action="selectparent"),
+            parse_mode="HTML"
+        )
+    
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("selectparent_cat_"))
+async def select_parent_category(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    parent_id = int(callback.data.replace("selectparent_cat_", ""))
+    await state.update_data(parent_id=parent_id)
+    await state.set_state(AddCategory.waiting_for_name)
+    
+    parent_name = db.get_category_name(parent_id)
+    await callback.message.edit_text(
+        f"📝 <b>Введите название подкатегории для '{parent_name}':</b>",
+        reply_markup=get_cancel_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.message(AddCategory.waiting_for_name)
+async def process_category_name(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("❌ У вас нет доступа!")
+        return
+    
+    category_name = message.text.strip()
+    if len(category_name) < 2:
+        await message.answer("❌ Название категории должно быть не менее 2 символов!")
+        return
+    
+    data = await state.get_data()
+    parent_id = data.get('parent_id')
+    
+    try:
+        category_id = await db.add_category(category_name, parent_id)
+        await message.answer(
+            f"✅ <b>Категория '{category_name}' успешно добавлена!</b>",
+            reply_markup=get_back_keyboard(),
+            parse_mode="HTML"
+        )
+        await state.clear()
+    except Exception as e:
+        await message.answer(
+            f"❌ <b>Ошибка добавления категории:</b>\n{str(e)}",
+            reply_markup=get_back_keyboard(),
+            parse_mode="HTML"
+        )
+
+# Добавление товара
+@router.callback_query(F.data == "add_product")
+async def add_product_start(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    await state.set_state(AddProduct.selecting_category)
+    await callback.message.edit_text(
+        "📁 <b>Выберите категорию для товара:</b>",
+        reply_markup=get_categories_keyboard(action="selectprodcat"),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("selectprodcat_cat_"))
+async def select_product_category(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    category_id = int(callback.data.replace("selectprodcat_cat_", ""))
+    await state.update_data(category_id=category_id)
+    await state.set_state(AddProduct.waiting_for_name)
+    
+    category_name = db.get_category_name(category_id)
+    await callback.message.edit_text(
+        f"📝 <b>Введите название товара для категории '{category_name}':</b>",
+        reply_markup=get_cancel_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.message(AddProduct.waiting_for_name)
+async def process_product_name(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("❌ У вас нет доступа!")
+        return
+    
+    product_name = message.text.strip()
+    if len(product_name) < 2:
+        await message.answer("❌ Название товара должно быть не менее 2 символов!")
+        return
+    
+    await state.update_data(name=product_name)
+    await state.set_state(AddProduct.waiting_for_description)
+    
+    await message.answer(
+        "📝 <b>Введите описание товара:</b>",
+        reply_markup=get_cancel_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.message(AddProduct.waiting_for_description)
+async def process_product_description(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("❌ У вас нет доступа!")
+        return
+    
+    description = message.text.strip()
+    if len(description) < 5:
+        await message.answer("❌ Описание должно быть не менее 5 символов!")
+        return
+    
+    await state.update_data(description=description)
+    await state.set_state(AddProduct.waiting_for_price)
+    
+    await message.answer(
+        "💰 <b>Введите цену товара (только число):</b>",
+        reply_markup=get_cancel_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.message(AddProduct.waiting_for_price)
+async def process_product_price(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("❌ У вас нет доступа!")
+        return
+    
+    try:
+        price = float(message.text.strip().replace(',', '.'))
+        if price <= 0:
+            raise ValueError("Цена должна быть больше 0")
+    except (ValueError, TypeError):
+        await message.answer("❌ Неверный формат цены! Введите число (например: 1500 или 99.99)")
+        return
+    
+    await state.update_data(price=price)
+    await state.set_state(AddProduct.waiting_for_photo)
+    
+    await message.answer(
+        "📸 <b>Отправьте фото товара (или любой текст чтобы пропустить):</b>",
+        reply_markup=get_cancel_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.message(AddProduct.waiting_for_photo)
+async def process_product_photo(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("❌ У вас нет доступа!")
+        return
+    
+    data = await state.get_data()
+    photo_id = None
+    
+    if message.photo:
+        photo_id = message.photo[-1].file_id
+    
+    try:
+        product_id = await db.add_product(
+            category_id=data['category_id'],
+            name=data['name'],
+            description=data['description'],
+            price=data['price'],
+            photo_id=photo_id
+        )
+        
+        category_name = db.get_category_name(data['category_id'])
+        response_text = f"""✅ <b>Товар успешно добавлен!</b>
+
+📦 <b>Название:</b> {data['name']}
+📝 <b>Описание:</b> {data['description']}
+💰 <b>Цена:</b> {data['price']}₽
+📁 <b>Категория:</b> {category_name}
+🖼️ <b>Фото:</b> {'✅' if photo_id else '❌'}
+
+ID товара: <code>{product_id}</code>"""
+        
+        await message.answer(
+            response_text,
+            reply_markup=get_back_keyboard(),
+            parse_mode="HTML"
+        )
+        await state.clear()
+        
+    except Exception as e:
+        await message.answer(
+            f"❌ <b>Ошибка добавления товара:</b>\n{str(e)}",
+            reply_markup=get_back_keyboard(),
+            parse_mode="HTML"
+        )
+
+# Управление категориями и товарами
+@router.callback_query(F.data == "manage_categories")
+async def manage_categories(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    categories = db.get_all_categories()
+    if not categories:
+        await callback.message.edit_text(
+            "📁 <b>Категории отсутствуют</b>",
+            reply_markup=get_back_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+    
+    text = "📁 <b>Управление категориями</b>\n\n"
+    for cat in categories:
+        parent_info = f" → {db.get_category_name(cat['parent_id'])}" if cat['parent_id'] else ""
+        text += f"• {cat['name']}{parent_info}\n"
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=get_back_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "manage_products")
+async def manage_products(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    products = db.get_all_products()
+    if not products:
+        await callback.message.edit_text(
+            "📦 <b>Товары отсутствуют</b>",
+            reply_markup=get_back_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+    
+    text = "📦 <b>Управление товарами</b>\n\n"
+    for prod in products[:10]:  # Показываем первые 10 товаров
+        stock = "✅ В наличии" if prod['in_stock'] else "❌ Нет в наличии"
+        text += f"• {prod['name']} - {prod['price']}₽ ({stock})\n"
+    
+    if len(products) > 10:
+        text += f"\n... и еще {len(products) - 10} товаров"
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=get_back_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "clear_all_data")
+async def clear_all_data(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑️ ДА, ОЧИСТИТЬ ВСЁ", callback_data="confirm_clear")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")]
+    ])
+    
+    await callback.message.edit_text(
+        "⚠️ <b>ВНИМАНИЕ!</b>\n\nВы уверены что хотите удалить ВСЕ данные (категории и товары)?\n\nЭто действие нельзя отменить!",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "confirm_clear")
+async def confirm_clear(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    db.clear_all_data()
+    await callback.message.edit_text(
+        "✅ <b>Все данные очищены!</b>",
+        reply_markup=get_back_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
 @router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
-    """Обработчик данных из WebApp - отправляет заказы админу в ЛС"""
+    """Обработчик заказов из WebApp"""
     logger.info(f"🟢 WebApp данные получены от {message.from_user.id}")
     
     try:
         data = json.loads(message.web_app_data.data)
-        logger.info(f"📦 Получены данные: {json.dumps(data, ensure_ascii=False)}")
+        logger.info(f"📦 Данные заказа: {data}")
         
         if data.get('type') != 'order':
             await message.answer("❌ Неизвестный тип данных")
@@ -398,9 +793,7 @@ async def handle_web_app_data(message: Message):
             total_price=total_price
         )
         
-        logger.info(f"📝 Заказ #{order_id} создан в БД")
-        
-        # Формируем сообщение для админа
+        # Формируем сообщение для группы
         order_details = '\n'.join([
             f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item['price'] * item['quantity']}₽"
             for item in items
@@ -410,7 +803,7 @@ async def handle_web_app_data(message: Message):
 
 👤 <b>Клиент:</b>
 ├ Имя: {message.from_user.first_name}
-├ ID: <code>{message.from_user.id}</code>
+├ ID: {message.from_user.id}
 └ @{message.from_user.username or 'нет username'}
 
 📦 <b>Заказ:</b>
@@ -420,16 +813,30 @@ async def handle_web_app_data(message: Message):
 
 ⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
         
-        # Отправляем админу в ЛС
+        # Отправляем в группу
         try:
+            if ORDER_CHANNEL_ID:
+                await bot.send_message(
+                    chat_id=ORDER_CHANNEL_ID, 
+                    text=order_text, 
+                    parse_mode="HTML"
+                )
+                logger.info(f"✅ Заказ #{order_id} отправлен в группу {ORDER_CHANNEL_ID}")
+            else:
+                # Если канал не указан, отправляем админу
+                await bot.send_message(
+                    chat_id=ADMIN_ID, 
+                    text=order_text, 
+                    parse_mode="HTML"
+                )
+                logger.info(f"✅ Заказ #{order_id} отправлен админу")
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки заказа: {e}")
+            # Если не получилось, шлем админу
             await bot.send_message(
                 chat_id=ADMIN_ID, 
-                text=order_text, 
-                parse_mode="HTML"
+                text=f"❌ Ошибка отправки заказа:\n{e}\n\n{order_text}"
             )
-            logger.info(f"✅ Заказ #{order_id} отправлен админу {ADMIN_ID}")
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки админу: {e}")
         
         # Уведомляем пользователя
         await message.answer(
@@ -445,7 +852,7 @@ async def handle_web_app_data(message: Message):
         logger.info(f"🎉 Заказ #{order_id} полностью обработан")
         
     except Exception as e:
-        logger.error(f"❌ Ошибка обработки: {e}")
+        logger.error(f"❌ Ошибка обработки заказа: {e}")
         await message.answer("❌ Ошибка обработки заказа")
 
 # ==================== КОМАНДЫ ====================
@@ -493,20 +900,30 @@ async def cmd_test_order(message: Message):
 
 # ==================== API СЕРВЕР ====================
 async def get_products_api(request):
-    products = db.get_all_products()
-    for product in products:
-        if product['photo_id']:
-            try:
-                file = await bot.get_file(product['photo_id'])
-                product['photo_url'] = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
-            except:
+    try:
+        products = db.get_all_products()
+        for product in products:
+            if product['photo_id']:
+                try:
+                    file = await bot.get_file(product['photo_id'])
+                    product['photo_url'] = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось получить фото URL: {e}")
+                    product['photo_url'] = None
+            else:
                 product['photo_url'] = None
-        else:
-            product['photo_url'] = None
-    return web.json_response(products)
+        return web.json_response(products)
+    except Exception as e:
+        logger.error(f"❌ Ошибка API products: {e}")
+        return web.json_response({"error": "Internal server error"}, status=500)
 
 async def get_categories_api(request):
-    return web.json_response(db.get_all_categories())
+    try:
+        categories = db.get_all_categories()
+        return web.json_response(categories)
+    except Exception as e:
+        logger.error(f"❌ Ошибка API categories: {e}")
+        return web.json_response({"error": "Internal server error"}, status=500)
 
 async def create_order_api(request):
     """Заглушка для API заказов"""
@@ -515,8 +932,14 @@ async def create_order_api(request):
 async def start_api_server():
     app = web.Application()
     cors = aiohttp_cors.setup(app, defaults={
-        "*": aiohttp_cors.ResourceOptions(allow_credentials=True, expose_headers="*", allow_headers="*")
+        "*": aiohttp_cors.ResourceOptions(
+            allow_credentials=True, 
+            expose_headers="*", 
+            allow_headers="*",
+            allow_methods=["GET", "POST", "OPTIONS"]
+        )
     })
+    
     cors.add(app.router.add_get('/api/products', get_products_api))
     cors.add(app.router.add_get('/api/categories', get_categories_api))
     cors.add(app.router.add_post('/api/order', create_order_api))
