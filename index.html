@@ -496,9 +496,9 @@
                 total_price: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
             };
 
-            console.log('📦 Отправка заказа:', orderData);
+            console.log('📦 Отправка заказа через WebApp:', orderData);
             
-            // ГЛАВНОЕ: отправка через sendData
+            // Отправка через Telegram WebApp
             if (window.Telegram?.WebApp?.sendData) {
                 tg.sendData(JSON.stringify(orderData));
                 
@@ -514,7 +514,12 @@
                 document.querySelector('.products-container').insertBefore(msg, document.getElementById('productsGrid'));
                 setTimeout(() => msg.remove(), 5000);
             } else {
-                alert('❌ Ошибка: WebApp недоступен');
+                // Fallback для тестирования вне Telegram
+                console.log('WebApp недоступен, заказ:', orderData);
+                alert('✅ Заказ оформлен! (тестовый режим)');
+                cart = [];
+                updateCartUI();
+                document.getElementById('cartModal').classList.remove('active');
             }
         }
 

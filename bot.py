@@ -372,14 +372,23 @@ async def show_admin_panel(callback: CallbackQuery, state: FSMContext):
 
 @router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
+    """Обработчик данных из WebApp - отправляет заказы админу в ЛС"""
+    logger.info(f"🟢 WebApp данные получены от {message.from_user.id}")
+    
     try:
         data = json.loads(message.web_app_data.data)
+        logger.info(f"📦 Получены данные: {json.dumps(data, ensure_ascii=False)}")
         
         if data.get('type') != 'order':
+            await message.answer("❌ Неизвестный тип данных")
             return
         
         items = data.get('items', [])
         total_price = data.get('total_price', 0)
+        
+        if not items:
+            await message.answer("❌ Пустой заказ")
+            return
         
         # Создаем заказ в БД
         order_id = db.create_order(
@@ -389,32 +398,55 @@ async def handle_web_app_data(message: Message):
             total_price=total_price
         )
         
+        logger.info(f"📝 Заказ #{order_id} создан в БД")
+        
         # Формируем сообщение для админа
         order_details = '\n'.join([
-            f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽"
+            f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item['price'] * item['quantity']}₽"
             for item in items
         ])
         
-        order_text = f"""🛒 ЗАКАЗ #{order_id}
+        order_text = f"""🛒 <b>НОВЫЙ ЗАКАЗ #{order_id}</b>
 
-Клиент: {message.from_user.first_name} (@{message.from_user.username or 'нет'})
-ID: {message.from_user.id}
+👤 <b>Клиент:</b>
+├ Имя: {message.from_user.first_name}
+├ ID: <code>{message.from_user.id}</code>
+└ @{message.from_user.username or 'нет username'}
 
-Заказ:
+📦 <b>Заказ:</b>
 {order_details}
 
-ИТОГО: {total_price}₽
-Время: {datetime.now().strftime('%H:%M %d.%m.%Y')}"""
+💰 <b>ИТОГО: {total_price}₽</b>
+
+⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
         
-        # Шлем админу в ЛС
-        await bot.send_message(ADMIN_ID, order_text)
+        # Отправляем админу в ЛС
+        try:
+            await bot.send_message(
+                chat_id=ADMIN_ID, 
+                text=order_text, 
+                parse_mode="HTML"
+            )
+            logger.info(f"✅ Заказ #{order_id} отправлен админу {ADMIN_ID}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки админу: {e}")
         
-        # Подтверждаем пользователю
-        await message.answer(f"✅ Заказ #{order_id} принят! Сумма: {total_price}₽")
+        # Уведомляем пользователя
+        await message.answer(
+            f"""✅ <b>Заказ #{order_id} успешно оформлен!</b>
+
+💰 Сумма: <b>{total_price}₽</b>
+📦 Товаров: <b>{len(items)}</b>
+
+📞 С вами свяжутся в течение 5-15 минут!""",
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"🎉 Заказ #{order_id} полностью обработан")
         
     except Exception as e:
-        logger.error(f"Ошибка: {e}")
-        await message.answer("❌ Ошибка оформления заказа")
+        logger.error(f"❌ Ошибка обработки: {e}")
+        await message.answer("❌ Ошибка обработки заказа")
 
 # ==================== КОМАНДЫ ====================
 @router.message(Command("getid"))
@@ -428,6 +460,36 @@ async def cmd_get_id(message: Message):
 <b>Используйте этот ID в .env файле!</b>""",
         parse_mode="HTML"
     )
+
+@router.message(Command("testorder"))
+async def cmd_test_order(message: Message):
+    """Тестовая команда для проверки отправки заказов"""
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    test_order_text = f"""🛒 <b>ТЕСТОВЫЙ ЗАКАЗ #999</b>
+
+👤 <b>Клиент:</b>
+├ Имя: Тестовый пользователь
+├ ID: 123456789
+└ @testuser
+
+📦 <b>Заказ:</b>
+• Тестовый товар - 2шт. × 500₽ = 1000₽
+
+💰 <b>ИТОГО: 1000₽</b>
+
+⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
+    
+    try:
+        await bot.send_message(
+            chat_id=ADMIN_ID,
+            text=test_order_text,
+            parse_mode="HTML"
+        )
+        await message.answer("✅ Тестовое сообщение отправлено АДМИНУ в ЛС")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка отправки: {e}")
 
 # ==================== API СЕРВЕР ====================
 async def get_products_api(request):
@@ -446,6 +508,10 @@ async def get_products_api(request):
 async def get_categories_api(request):
     return web.json_response(db.get_all_categories())
 
+async def create_order_api(request):
+    """Заглушка для API заказов"""
+    return web.json_response({"status": "error", "message": "Use Telegram WebApp for orders"}, status=400)
+
 async def start_api_server():
     app = web.Application()
     cors = aiohttp_cors.setup(app, defaults={
@@ -453,6 +519,7 @@ async def start_api_server():
     })
     cors.add(app.router.add_get('/api/products', get_products_api))
     cors.add(app.router.add_get('/api/categories', get_categories_api))
+    cors.add(app.router.add_post('/api/order', create_order_api))
     
     runner = web.AppRunner(app)
     await runner.setup()
