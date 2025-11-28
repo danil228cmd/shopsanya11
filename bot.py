@@ -813,9 +813,20 @@ async def handle_web_app_data(message: Message):
 
 ⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
         
-        # Отправляем в группу
+        # ОТПРАВЛЯЕМ В ГРУППУ С ПРОВЕРКОЙ
+        logger.info(f"🔄 Пытаюсь отправить заказ #{order_id} в канал {ORDER_CHANNEL_ID}")
+        
         try:
             if ORDER_CHANNEL_ID:
+                # Проверяем доступ к каналу
+                try:
+                    chat = await bot.get_chat(ORDER_CHANNEL_ID)
+                    logger.info(f"✅ Канал доступен: {chat.title}")
+                except Exception as chat_error:
+                    logger.error(f"❌ Ошибка доступа к каналу: {chat_error}")
+                    raise chat_error
+                
+                # Отправляем сообщение
                 await bot.send_message(
                     chat_id=ORDER_CHANNEL_ID, 
                     text=order_text, 
@@ -823,6 +834,7 @@ async def handle_web_app_data(message: Message):
                 )
                 logger.info(f"✅ Заказ #{order_id} отправлен в группу {ORDER_CHANNEL_ID}")
             else:
+                logger.warning("⚠️ ORDER_CHANNEL_ID не указан")
                 # Если канал не указан, отправляем админу
                 await bot.send_message(
                     chat_id=ADMIN_ID, 
@@ -830,13 +842,19 @@ async def handle_web_app_data(message: Message):
                     parse_mode="HTML"
                 )
                 logger.info(f"✅ Заказ #{order_id} отправлен админу")
+                
         except Exception as e:
-            logger.error(f"❌ Ошибка отправки заказа: {e}")
+            logger.error(f"❌ Ошибка отправки заказа в группу: {e}")
             # Если не получилось, шлем админу
-            await bot.send_message(
-                chat_id=ADMIN_ID, 
-                text=f"❌ Ошибка отправки заказа:\n{e}\n\n{order_text}"
-            )
+            try:
+                await bot.send_message(
+                    chat_id=ADMIN_ID, 
+                    text=f"❌ ОШИБКА ОТПРАВКИ ЗАКАЗА #{order_id}:\n{str(e)}\n\nДанные заказа:\n{order_text}",
+                    parse_mode="HTML"
+                )
+                logger.info(f"✅ Уведомление об ошибке отправлено админу")
+            except Exception as admin_error:
+                logger.error(f"❌ Не удалось отправить даже админу: {admin_error}")
         
         # Уведомляем пользователя
         await message.answer(
@@ -867,7 +885,34 @@ async def cmd_get_id(message: Message):
 <b>Используйте этот ID в .env файле!</b>""",
         parse_mode="HTML"
     )
-
+@router.message(Command("testchannel"))
+async def test_channel_command(message: Message):
+    """Тест отправки в канал"""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("❌ У вас нет доступа!")
+        return
+        
+    try:
+        logger.info(f"🔍 Тестирую канал: {ORDER_CHANNEL_ID}")
+        
+        # Проверяем доступ к каналу
+        chat = await bot.get_chat(ORDER_CHANNEL_ID)
+        logger.info(f"✅ Канал доступен: {chat.title}")
+        
+        # Отправляем тестовое сообщение
+        await bot.send_message(
+            chat_id=ORDER_CHANNEL_ID,
+            text="🛒 <b>ТЕСТОВОЕ СООБЩЕНИЕ ОТ БОТА</b>\n\nЕсли вы видите это сообщение, значит бот может отправлять заказы в эту группу!",
+            parse_mode="HTML"
+        )
+        
+        await message.answer("✅ Тестовое сообщение отправлено в канал!")
+        logger.info("✅ Тестовое сообщение отправлено в канал")
+        
+    except Exception as e:
+        error_msg = f"❌ Ошибка отправки в канал: {e}"
+        await message.answer(error_msg)
+        logger.error(error_msg)
 @router.message(Command("testorder"))
 async def cmd_test_order(message: Message):
     """Тестовая команда для проверки отправки заказов"""
