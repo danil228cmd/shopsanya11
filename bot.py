@@ -907,15 +907,29 @@ async def get_products_api(request):
                 try:
                     file = await bot.get_file(product['photo_id'])
                     product['photo_url'] = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
-                except Exception as e:
-                    logger.warning(f"⚠️ Не удалось получить фото URL: {e}")
+                except Exception:
                     product['photo_url'] = None
             else:
                 product['photo_url'] = None
-        return web.json_response(products)
+        
+        response = web.json_response(products)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response
     except Exception as e:
-        logger.error(f"❌ Ошибка API products: {e}")
-        return web.json_response({"error": "Internal server error"}, status=500)
+        response = web.json_response({"error": str(e)}, status=500)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response
+
+async def get_categories_api(request):
+    try:
+        categories = db.get_all_categories()
+        response = web.json_response(categories)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response
+    except Exception as e:
+        response = web.json_response({"error": str(e)}, status=500)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response
 
 async def get_categories_api(request):
     try:
