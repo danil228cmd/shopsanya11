@@ -370,77 +370,51 @@ async def show_admin_panel(callback: CallbackQuery, state: FSMContext):
         pass
     await callback.answer()
 
-# ==================== ОДИН ПРАВИЛЬНЫЙ ОБРАБОТЧИК WEBAPP ====================
 @router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
-    """ЕДИНСТВЕННЫЙ обработчик данных из WebApp"""
-    logger.info(f"🟢 WebApp данные получены от {message.from_user.id}")
-    
     try:
         data = json.loads(message.web_app_data.data)
-        logger.info(f"📦 Данные: {data}")
         
         if data.get('type') != 'order':
-            await message.answer("❌ Неизвестный тип данных")
             return
         
         items = data.get('items', [])
         total_price = data.get('total_price', 0)
         
-        if not items:
-            await message.answer("❌ Пустой заказ")
-            return
-        
         # Создаем заказ в БД
         order_id = db.create_order(
             user_id=message.from_user.id,
-            username=message.from_user.username or '',
+            username=message.from_user.username or message.from_user.first_name,
             items=json.dumps(items, ensure_ascii=False),
             total_price=total_price
         )
         
-        # Формируем сообщение
+        # Формируем сообщение для админа
         order_details = '\n'.join([
-            f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item['price'] * item['quantity']}₽"
+            f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽"
             for item in items
         ])
         
-        order_text = f"""🛒 <b>НОВЫЙ ЗАКАЗ #{order_id}</b>
+        order_text = f"""🛒 ЗАКАЗ #{order_id}
 
-👤 <b>Клиент:</b>
-├ Имя: {message.from_user.first_name}
-├ ID: {message.from_user.id}
-└ @{message.from_user.username or 'нет username'}
+Клиент: {message.from_user.first_name} (@{message.from_user.username or 'нет'})
+ID: {message.from_user.id}
 
-📦 <b>Заказ:</b>
+Заказ:
 {order_details}
 
-💰 <b>ИТОГО: {total_price}₽</b>
-
-⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
+ИТОГО: {total_price}₽
+Время: {datetime.now().strftime('%H:%M %d.%m.%Y')}"""
         
-        # Отправляем в канал/группу
-        try:
-            await bot.send_message(chat_id=ORDER_CHANNEL_ID, text=order_text, parse_mode="HTML")
-            logger.info(f"✅ Заказ #{order_id} отправлен в {ORDER_CHANNEL_ID}")
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки в канал: {e}")
-            await bot.send_message(chat_id=ADMIN_ID, text=f"❌ Ошибка отправки заказа:\n{e}")
+        # Шлем админу в ЛС
+        await bot.send_message(ADMIN_ID, order_text)
         
-        # Уведомляем пользователя
-        await message.answer(
-            f"""✅ <b>Заказ #{order_id} успешно оформлен!</b>
-
-💰 Сумма: <b>{total_price}₽</b>
-📦 Товаров: <b>{len(items)}</b>
-
-📞 С вами свяжутся в течение 5-15 минут!""",
-            parse_mode="HTML"
-        )
+        # Подтверждаем пользователю
+        await message.answer(f"✅ Заказ #{order_id} принят! Сумма: {total_price}₽")
         
     except Exception as e:
-        logger.error(f"❌ Ошибка обработки: {e}")
-        await message.answer("❌ Ошибка обработки заказа")
+        logger.error(f"Ошибка: {e}")
+        await message.answer("❌ Ошибка оформления заказа")
 
 # ==================== КОМАНДЫ ====================
 @router.message(Command("getid"))
