@@ -899,6 +899,7 @@ async def cmd_test_order(message: Message):
         await message.answer(f"❌ Ошибка отправки: {e}")
 
 # ==================== API СЕРВЕР ====================
+# ==================== API СЕРВЕР ====================
 async def get_products_api(request):
     try:
         products = db.get_all_products()
@@ -907,16 +908,21 @@ async def get_products_api(request):
                 try:
                     file = await bot.get_file(product['photo_id'])
                     product['photo_url'] = f"https://api.telegram.org/file/bot{TOKEN}/{file.file_path}"
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось получить фото URL: {e}")
                     product['photo_url'] = None
             else:
                 product['photo_url'] = None
         
         response = web.json_response(products)
         response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
         return response
+        
     except Exception as e:
-        response = web.json_response({"error": str(e)}, status=500)
+        logger.error(f"❌ Ошибка API products: {e}")
+        response = web.json_response({"error": "Internal server error"}, status=500)
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response
 
@@ -925,38 +931,39 @@ async def get_categories_api(request):
         categories = db.get_all_categories()
         response = web.json_response(categories)
         response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
         return response
     except Exception as e:
-        response = web.json_response({"error": str(e)}, status=500)
+        logger.error(f"❌ Ошибка API categories: {e}")
+        response = web.json_response({"error": "Internal server error"}, status=500)
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response
 
-async def get_categories_api(request):
-    try:
-        categories = db.get_all_categories()
-        return web.json_response(categories)
-    except Exception as e:
-        logger.error(f"❌ Ошибка API categories: {e}")
-        return web.json_response({"error": "Internal server error"}, status=500)
+async def options_handler(request):
+    response = web.Response()
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    return response
 
-async def create_order_api(request):
-    """Заглушка для API заказов"""
-    return web.json_response({"status": "error", "message": "Use Telegram WebApp for orders"}, status=400)
+async def health_check(request):
+    response = web.json_response({"status": "ok", "message": "Bot is running"})
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response
 
 async def start_api_server():
     app = web.Application()
-    cors = aiohttp_cors.setup(app, defaults={
-        "*": aiohttp_cors.ResourceOptions(
-            allow_credentials=True, 
-            expose_headers="*", 
-            allow_headers="*",
-            allow_methods=["GET", "POST", "OPTIONS"]
-        )
-    })
     
-    cors.add(app.router.add_get('/api/products', get_products_api))
-    cors.add(app.router.add_get('/api/categories', get_categories_api))
-    cors.add(app.router.add_post('/api/order', create_order_api))
+    # Добавляем маршруты
+    app.router.add_get('/api/products', get_products_api)
+    app.router.add_get('/api/categories', get_categories_api)
+    app.router.add_get('/health', health_check)
+    
+    # Добавляем OPTIONS handlers для CORS
+    app.router.add_route('OPTIONS', '/api/products', options_handler)
+    app.router.add_route('OPTIONS', '/api/categories', options_handler)
+    app.router.add_route('OPTIONS', '/health', options_handler)
     
     runner = web.AppRunner(app)
     await runner.setup()
