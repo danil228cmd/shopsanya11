@@ -30,7 +30,7 @@ load_env()
 # Настройки
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://your-webapp-url.com")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "shopsanya11-production.up.railway.app")
 ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID")
 
 # Настройка логирования
