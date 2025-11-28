@@ -769,17 +769,22 @@ async def confirm_clear(callback: CallbackQuery):
 async def handle_web_app_data(message: Message):
     """Обработчик заказов из WebApp"""
     logger.info(f"🟢 WebApp данные получены от {message.from_user.id}")
+    logger.info(f"📦 Raw web_app_data: {message.web_app_data}")
+    logger.info(f"📦 WebApp data string: {message.web_app_data.data}")
     
     try:
         data = json.loads(message.web_app_data.data)
-        logger.info(f"📦 Данные заказа: {data}")
+        logger.info(f"📦 Parsed data: {data}")
         
         if data.get('type') != 'order':
+            logger.warning(f"⚠️ Unknown data type: {data.get('type')}")
             await message.answer("❌ Неизвестный тип данных")
             return
         
         items = data.get('items', [])
         total_price = data.get('total_price', 0)
+        
+        logger.info(f"📦 Items: {len(items)}, Total: {total_price}")
         
         if not items:
             await message.answer("❌ Пустой заказ")
@@ -792,6 +797,8 @@ async def handle_web_app_data(message: Message):
             items=json.dumps(items, ensure_ascii=False),
             total_price=total_price
         )
+        
+        logger.info(f"📦 Order #{order_id} created in database")
         
         # Формируем сообщение для группы
         order_details = '\n'.join([
@@ -813,20 +820,11 @@ async def handle_web_app_data(message: Message):
 
 ⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
         
-        # ОТПРАВЛЯЕМ В ГРУППУ С ПРОВЕРКОЙ
-        logger.info(f"🔄 Пытаюсь отправить заказ #{order_id} в канал {ORDER_CHANNEL_ID}")
+        # Отправляем в группу
+        logger.info(f"🔄 Sending order #{order_id} to channel {ORDER_CHANNEL_ID}")
         
         try:
             if ORDER_CHANNEL_ID:
-                # Проверяем доступ к каналу
-                try:
-                    chat = await bot.get_chat(ORDER_CHANNEL_ID)
-                    logger.info(f"✅ Канал доступен: {chat.title}")
-                except Exception as chat_error:
-                    logger.error(f"❌ Ошибка доступа к каналу: {chat_error}")
-                    raise chat_error
-                
-                # Отправляем сообщение
                 await bot.send_message(
                     chat_id=ORDER_CHANNEL_ID, 
                     text=order_text, 
@@ -835,26 +833,13 @@ async def handle_web_app_data(message: Message):
                 logger.info(f"✅ Заказ #{order_id} отправлен в группу {ORDER_CHANNEL_ID}")
             else:
                 logger.warning("⚠️ ORDER_CHANNEL_ID не указан")
-                # Если канал не указан, отправляем админу
-                await bot.send_message(
-                    chat_id=ADMIN_ID, 
-                    text=order_text, 
-                    parse_mode="HTML"
-                )
-                logger.info(f"✅ Заказ #{order_id} отправлен админу")
                 
         except Exception as e:
             logger.error(f"❌ Ошибка отправки заказа в группу: {e}")
-            # Если не получилось, шлем админу
-            try:
-                await bot.send_message(
-                    chat_id=ADMIN_ID, 
-                    text=f"❌ ОШИБКА ОТПРАВКИ ЗАКАЗА #{order_id}:\n{str(e)}\n\nДанные заказа:\n{order_text}",
-                    parse_mode="HTML"
-                )
-                logger.info(f"✅ Уведомление об ошибке отправлено админу")
-            except Exception as admin_error:
-                logger.error(f"❌ Не удалось отправить даже админу: {admin_error}")
+            await bot.send_message(
+                chat_id=ADMIN_ID, 
+                text=f"❌ Ошибка отправки заказа #{order_id}:\n{e}"
+            )
         
         # Уведомляем пользователя
         await message.answer(
@@ -869,8 +854,12 @@ async def handle_web_app_data(message: Message):
         
         logger.info(f"🎉 Заказ #{order_id} полностью обработан")
         
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ JSON decode error: {e}")
+        logger.error(f"❌ Raw data that failed: {message.web_app_data.data}")
+        await message.answer("❌ Ошибка формата данных заказа")
     except Exception as e:
-        logger.error(f"❌ Ошибка обработки заказа: {e}")
+        logger.error(f"❌ Общая ошибка обработки заказа: {e}")
         await message.answer("❌ Ошибка обработки заказа")
 
 # ==================== КОМАНДЫ ====================
