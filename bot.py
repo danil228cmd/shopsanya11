@@ -14,30 +14,7 @@ import sqlite3
 from typing import List, Optional
 from aiohttp import web
 import aiohttp_cors
-import requests
-# В начале файла после импортов
-from initial_data import load_initial_data
 
-# В класс Database в метод __init__ добавь:
-def __init__(self, db_file: str = "shop.db"):
-    self.db_file = db_file
-    self.init_db()
-    # Проверяем и загружаем данные
-    self.check_and_load_data()
-
-def check_and_load_data(self):
-    """Проверяем и загружаем данные если БД пустая"""
-    conn = self.get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT COUNT(*) FROM categories")
-    if cursor.fetchone()[0] == 0:
-        logger.info("🔄 БД пустая, загружаем начальные данные...")
-        load_initial_data(self.db_file)
-    else:
-        logger.info("✅ В БД уже есть данные")
-    
-    conn.close()
 # Загрузка переменных окружения
 def load_env():
     if os.path.exists('.env'):
@@ -173,7 +150,6 @@ class Database:
         finally:
             conn.close()
     
-    # ... остальные методы БД остаются такими же как в предыдущей версии ...
     def clear_all_data(self):
         try:
             conn = self.get_connection()
@@ -1143,6 +1119,7 @@ async def cmd_get_id(message: Message):
 <b>Используйте этот ID в .env файле!</b>""",
         parse_mode="HTML"
     )
+
 @router.message(Command("loaddata"))
 async def cmd_load_data(message: Message):
     """Принудительная загрузка тестовых данных"""
@@ -1156,6 +1133,7 @@ async def cmd_load_data(message: Message):
         await message.answer("✅ Тестовые данные загружены!\n\nТеперь в магазине должны появиться товары.")
     except Exception as e:
         await message.answer(f"❌ Ошибка загрузки данных: {e}")
+
 @router.message(Command("orders"))
 async def cmd_orders(message: Message):
     """Команда для просмотра заказов"""
