@@ -767,14 +767,13 @@ async def confirm_clear(callback: CallbackQuery):
 
 @router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
-    """Обработчик заказов из WebApp"""
-    logger.info(f"🟢 WebApp данные получены от {message.from_user.id}")
-    logger.info(f"📦 Raw web_app_data: {message.web_app_data}")
-    logger.info(f"📦 WebApp data string: {message.web_app_data.data}")
+    """Обработчик заказов из WebApp - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+    logger.info(f"🟢 WebApp данные получены от пользователя {message.from_user.id}")
     
     try:
+        # Получаем данные из WebApp
         data = json.loads(message.web_app_data.data)
-        logger.info(f"📦 Parsed data: {data}")
+        logger.info(f"📦 Данные заказа: {data}")
         
         if data.get('type') != 'order':
             logger.warning(f"⚠️ Unknown data type: {data.get('type')}")
@@ -784,34 +783,39 @@ async def handle_web_app_data(message: Message):
         items = data.get('items', [])
         total_price = data.get('total_price', 0)
         
-        logger.info(f"📦 Items: {len(items)}, Total: {total_price}")
+        logger.info(f"📦 Товаров: {len(items)}, Общая сумма: {total_price}")
         
         if not items:
             await message.answer("❌ Пустой заказ")
             return
         
+        # Получаем информацию о пользователе
+        user = message.from_user
+        username = f"@{user.username}" if user.username else "не указан"
+        
         # Создаем заказ в БД
         order_id = db.create_order(
-            user_id=message.from_user.id,
-            username=message.from_user.username or message.from_user.first_name,
+            user_id=user.id,
+            username=user.username or user.first_name,
             items=json.dumps(items, ensure_ascii=False),
             total_price=total_price
         )
         
-        logger.info(f"📦 Order #{order_id} created in database")
+        logger.info(f"📦 Заказ #{order_id} создан в базе данных")
         
-        # Формируем сообщение для группы
+        # Формируем детали заказа
         order_details = '\n'.join([
             f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item['price'] * item['quantity']}₽"
             for item in items
         ])
         
+        # Формируем сообщение для группы
         order_text = f"""🛒 <b>НОВЫЙ ЗАКАЗ #{order_id}</b>
 
 👤 <b>Клиент:</b>
-├ Имя: {message.from_user.first_name}
-├ ID: {message.from_user.id}
-└ @{message.from_user.username or 'нет username'}
+├ Имя: {user.first_name}
+├ ID: {user.id}
+└ Username: {username}
 
 📦 <b>Заказ:</b>
 {order_details}
@@ -819,9 +823,9 @@ async def handle_web_app_data(message: Message):
 💰 <b>ИТОГО: {total_price}₽</b>
 
 ⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
-        
+
         # Отправляем в группу
-        logger.info(f"🔄 Sending order #{order_id} to channel {ORDER_CHANNEL_ID}")
+        logger.info(f"🔄 Отправляю заказ #{order_id} в группу {ORDER_CHANNEL_ID}")
         
         try:
             if ORDER_CHANNEL_ID:
@@ -830,37 +834,43 @@ async def handle_web_app_data(message: Message):
                     text=order_text, 
                     parse_mode="HTML"
                 )
-                logger.info(f"✅ Заказ #{order_id} отправлен в группу {ORDER_CHANNEL_ID}")
+                logger.info(f"✅ Заказ #{order_id} отправлен в группу!")
             else:
-                logger.warning("⚠️ ORDER_CHANNEL_ID не указан")
+                logger.error("❌ ORDER_CHANNEL_ID не указан!")
+                # Отправляем админу уведомление об ошибке
+                await bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text="❌ ORDER_CHANNEL_ID не указан в настройках!"
+                )
                 
         except Exception as e:
             logger.error(f"❌ Ошибка отправки заказа в группу: {e}")
+            # Отправляем ошибку админу
             await bot.send_message(
                 chat_id=ADMIN_ID, 
-                text=f"❌ Ошибка отправки заказа #{order_id}:\n{e}"
+                text=f"❌ Ошибка отправки заказа #{order_id}:\n{str(e)}"
             )
         
-        # Уведомляем пользователя
-        await message.answer(
-            f"""✅ <b>Заказ #{order_id} успешно оформлен!</b>
+        # Уведомляем пользователя об успехе
+        success_text = f"""✅ <b>Заказ #{order_id} успешно оформлен!</b>
 
 💰 Сумма: <b>{total_price}₽</b>
 📦 Товаров: <b>{len(items)}</b>
 
-📞 С вами свяжутся в течение 5-15 минут!""",
-            parse_mode="HTML"
-        )
-        
-        logger.info(f"🎉 Заказ #{order_id} полностью обработан")
+📞 С вами свяжутся в течение 5-15 минут для подтверждения заказа!
+
+🆔 Номер вашего заказа: <code>{order_id}</code>"""
+
+        await message.answer(success_text, parse_mode="HTML")
+        logger.info(f"🎉 Заказ #{order_id} полностью обработан для пользователя {user.id}")
         
     except json.JSONDecodeError as e:
-        logger.error(f"❌ JSON decode error: {e}")
-        logger.error(f"❌ Raw data that failed: {message.web_app_data.data}")
-        await message.answer("❌ Ошибка формата данных заказа")
+        logger.error(f"❌ Ошибка декодирования JSON: {e}")
+        logger.error(f"❌ Raw data: {message.web_app_data.data}")
+        await message.answer("❌ Ошибка формата данных заказа. Пожалуйста, попробуйте еще раз.")
     except Exception as e:
         logger.error(f"❌ Общая ошибка обработки заказа: {e}")
-        await message.answer("❌ Ошибка обработки заказа")
+        await message.answer("❌ Произошла ошибка при обработке заказа. Пожалуйста, попробуйте еще раз или свяжитесь с администратором.")
 
 # ==================== КОМАНДЫ ====================
 @router.message(Command("getid"))
