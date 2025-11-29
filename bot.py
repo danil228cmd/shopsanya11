@@ -789,14 +789,27 @@ async def handle_web_app_data(message: Message):
             await message.answer("❌ Пустой заказ")
             return
         
-        # Получаем информацию о пользователе
-        user = message.from_user
-        username = f"@{user.username}" if user.username else "не указан"
+        # ПРИОРИТЕТ 1: Используем данные из WebApp, если они есть
+        user_id_from_webapp = data.get('user_id')
+        username_from_webapp = data.get('username', 'не указан')
+        first_name_from_webapp = data.get('first_name', 'Пользователь')
+        
+        # ПРИОРИТЕТ 2: Если данных из WebApp нет, используем данные из сообщения
+        if user_id_from_webapp:
+            user_id = user_id_from_webapp
+            username = username_from_webapp
+            first_name = first_name_from_webapp
+            logger.info(f"👤 Используем данные из WebApp: {user_id} - {first_name}")
+        else:
+            user_id = message.from_user.id
+            username = message.from_user.username or message.from_user.first_name
+            first_name = message.from_user.first_name
+            logger.info(f"👤 Используем данные из сообщения: {user_id} - {first_name}")
         
         # Создаем заказ в БД
         order_id = db.create_order(
-            user_id=user.id,
-            username=user.username or user.first_name,
+            user_id=user_id,
+            username=username,
             items=json.dumps(items, ensure_ascii=False),
             total_price=total_price
         )
@@ -813,9 +826,9 @@ async def handle_web_app_data(message: Message):
         order_text = f"""🛒 <b>НОВЫЙ ЗАКАЗ #{order_id}</b>
 
 👤 <b>Клиент:</b>
-├ Имя: {user.first_name}
-├ ID: {user.id}
-└ Username: {username}
+├ Имя: {first_name}
+├ ID: {user_id}
+└ Username: @{username}
 
 📦 <b>Заказ:</b>
 {order_details}
@@ -837,40 +850,32 @@ async def handle_web_app_data(message: Message):
                 logger.info(f"✅ Заказ #{order_id} отправлен в группу!")
             else:
                 logger.error("❌ ORDER_CHANNEL_ID не указан!")
-                # Отправляем админу уведомление об ошибке
-                await bot.send_message(
-                    chat_id=ADMIN_ID,
-                    text="❌ ORDER_CHANNEL_ID не указан в настройках!"
-                )
                 
         except Exception as e:
             logger.error(f"❌ Ошибка отправки заказа в группу: {e}")
-            # Отправляем ошибку админу
-            await bot.send_message(
-                chat_id=ADMIN_ID, 
-                text=f"❌ Ошибка отправки заказа #{order_id}:\n{str(e)}"
-            )
-        
+            # Сохраняем заказ в лог файл как запасной вариант
+            with open('failed_orders.log', 'a', encoding='utf-8') as f:
+                f.write(f"\n{datetime.now()} - Order #{order_id} - {order_text}\n")
+            
         # Уведомляем пользователя об успехе
         success_text = f"""✅ <b>Заказ #{order_id} успешно оформлен!</b>
 
 💰 Сумма: <b>{total_price}₽</b>
 📦 Товаров: <b>{len(items)}</b>
 
-📞 С вами свяжутся в течение 5-15 минут для подтверждения заказа!
+📞 С вами свяжутся в течение 5-15 минут!
 
-🆔 Номер вашего заказа: <code>{order_id}</code>"""
+🆔 Номер заказа: <code>{order_id}</code>"""
 
         await message.answer(success_text, parse_mode="HTML")
-        logger.info(f"🎉 Заказ #{order_id} полностью обработан для пользователя {user.id}")
+        logger.info(f"🎉 Заказ #{order_id} полностью обработан")
         
     except json.JSONDecodeError as e:
         logger.error(f"❌ Ошибка декодирования JSON: {e}")
-        logger.error(f"❌ Raw data: {message.web_app_data.data}")
-        await message.answer("❌ Ошибка формата данных заказа. Пожалуйста, попробуйте еще раз.")
+        await message.answer("❌ Ошибка формата данных заказа")
     except Exception as e:
         logger.error(f"❌ Общая ошибка обработки заказа: {e}")
-        await message.answer("❌ Произошла ошибка при обработке заказа. Пожалуйста, попробуйте еще раз или свяжитесь с администратором.")
+        await message.answer("❌ Ошибка обработки заказа")
 
 # ==================== КОМАНДЫ ====================
 @router.message(Command("getid"))

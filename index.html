@@ -734,7 +734,53 @@
         let currentProduct = null;
 
         const API_URL = 'https://shopsanya11-production.up.railway.app';
+            // Получаем данные пользователя из Telegram WebApp
+    const user = tg.initDataUnsafe?.user;
+    const user_id = user?.id;
+    const username = user?.username || 'не указан';
+    const first_name = user?.first_name || 'Пользователь';
 
+    console.log('👤 User data:', { user_id, username, first_name });
+
+    function checkout() {
+        if (cart.length === 0) {
+            showError('Корзина пуста');
+            return;
+        }
+
+        const orderData = {
+            type: 'order',
+            user_id: user_id, // Добавляем ID пользователя
+            username: username,
+            first_name: first_name,
+            items: cart.map(item => ({
+                id: item.id,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity
+            })),
+            total_price: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+        };
+
+        console.log('📦 Отправка заказа:', orderData);
+        
+        if (window.Telegram?.WebApp?.sendData) {
+            try {
+                tg.sendData(JSON.stringify(orderData));
+                
+                cart = [];
+                updateCartUI();
+                document.getElementById('cartModal').classList.remove('active');
+                
+                showSuccess('Заказ успешно оформлен! Администратор свяжется с вами в ближайшее время.');
+            } catch (error) {
+                console.error('Ошибка отправки заказа:', error);
+                showError('Ошибка отправки заказа. Попробуйте еще раз.');
+            }
+        } else {
+            showError('WebApp недоступен. Пожалуйста, обновите страницу.');
+        }
+    }
         // Utility functions
         function showError(message) {
             const errorDiv = document.createElement('div');
