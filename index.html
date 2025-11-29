@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>🎁 Магазин</title>
+    <title>🛍️ Магазин</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * { 
@@ -13,21 +13,36 @@
         }
         
         :root {
-            --primary-color: #3390ec;
-            --primary-hover: #2a7cd6;
-            --success-color: #00c853;
+            --tg-theme-bg-color: #0f0f0f;
+            --tg-theme-text-color: #ffffff;
+            --tg-theme-hint-color: #aaaaaa;
+            --tg-theme-link-color: #8774e1;
+            --tg-theme-button-color: #8774e1;
+            --tg-theme-button-text-color: #ffffff;
+            --tg-theme-secondary-bg-color: #1f1f1f;
+            --tg-theme-header-bg-color: #1f1f1f;
+            --tg-theme-accent-text-color: #8774e1;
+            --tg-theme-section-bg-color: #1f1f1f;
+            --tg-theme-section-header-text-color: #8774e1;
+            --tg-theme-subtitle-text-color: #aaaaaa;
+            --tg-theme-destructive-text-color: #ff3b30;
+            
+            --primary-color: #8774e1;
+            --primary-hover: #6a54d4;
+            --success-color: #34c759;
             --error-color: #ff3b30;
-            --warning-color: #ff9500;
-            --bg-color: #ffffff;
-            --secondary-bg: #f8f9fa;
-            --text-color: #000000;
-            --text-secondary: #6c757d;
-            --border-color: #e9ecef;
-            --shadow: 0 4px 12px rgba(0,0,0,0.1);
-            --shadow-hover: 0 8px 24px rgba(0,0,0,0.15);
-            --border-radius: 16px;
-            --border-radius-sm: 12px;
+            --warning-color: #ffcc00;
+            --bg-color: var(--tg-theme-bg-color);
+            --secondary-bg: var(--tg-theme-secondary-bg-color);
+            --text-color: var(--tg-theme-text-color);
+            --text-secondary: var(--tg-theme-hint-color);
+            --border-color: #2a2a2a;
+            --shadow: 0 8px 32px rgba(0,0,0,0.4);
+            --shadow-hover: 0 12px 48px rgba(135, 116, 225, 0.3);
+            --border-radius: 20px;
+            --border-radius-sm: 16px;
             --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --card-shadow: 0 4px 24px rgba(0,0,0,0.2);
         }
 
         body {
@@ -36,17 +51,18 @@
             color: var(--text-color);
             line-height: 1.6;
             overflow-x: hidden;
+            padding-bottom: 90px;
         }
 
         /* Header Styles */
         .header {
             position: sticky;
             top: 0;
-            background: var(--bg-color);
-            backdrop-filter: blur(20px);
+            background: var(--tg-theme-header-bg-color);
+            backdrop-filter: blur(40px);
             border-bottom: 1px solid var(--border-color);
             z-index: 1000;
-            padding: 12px 16px;
+            padding: 16px;
             animation: slideDown 0.5s ease;
         }
 
@@ -57,37 +73,39 @@
 
         .search-box {
             position: relative;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
         }
         
         .search-input {
             width: 100%;
-            padding: 14px 45px 14px 45px;
+            padding: 16px 52px 16px 52px;
             border: 2px solid var(--border-color);
             border-radius: var(--border-radius-sm);
-            font-size: 16px;
+            font-size: 17px;
             background: var(--secondary-bg);
             color: var(--text-color);
             transition: var(--transition);
             outline: none;
+            font-weight: 500;
         }
 
         .search-input:focus {
             border-color: var(--primary-color);
-            background: var(--bg-color);
-            box-shadow: 0 0 0 3px rgba(51, 144, 236, 0.1);
+            background: var(--secondary-bg);
+            box-shadow: 0 0 0 3px rgba(135, 116, 225, 0.2);
         }
 
         .search-input::placeholder {
             color: var(--text-secondary);
+            font-weight: 400;
         }
 
         .search-icon {
             position: absolute;
-            left: 15px;
+            left: 18px;
             top: 50%;
             transform: translateY(-50%);
-            font-size: 18px;
+            font-size: 20px;
             color: var(--text-secondary);
             transition: var(--transition);
         }
@@ -98,7 +116,7 @@
 
         .filters {
             display: flex;
-            gap: 8px;
+            gap: 12px;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
             padding-bottom: 4px;
@@ -110,7 +128,7 @@
         }
 
         .filter-btn {
-            padding: 10px 18px;
+            padding: 12px 24px;
             border: 2px solid var(--border-color);
             border-radius: 25px;
             background: var(--secondary-bg);
@@ -118,7 +136,7 @@
             white-space: nowrap;
             cursor: pointer;
             transition: var(--transition);
-            font-size: 14px;
+            font-size: 16px;
             font-weight: 500;
             flex-shrink: 0;
         }
@@ -154,13 +172,13 @@
         }
 
         .product-card {
-            background: var(--bg-color);
+            background: var(--secondary-bg);
             border-radius: var(--border-radius);
             overflow: hidden;
             cursor: pointer;
             transition: var(--transition);
             border: 1px solid var(--border-color);
-            box-shadow: var(--shadow);
+            box-shadow: var(--card-shadow);
             animation: cardAppear 0.5s ease;
             position: relative;
         }
@@ -168,7 +186,7 @@
         @keyframes cardAppear {
             from { 
                 opacity: 0; 
-                transform: scale(0.8) translateY(20px); 
+                transform: scale(0.9) translateY(20px); 
             }
             to { 
                 opacity: 1; 
@@ -179,6 +197,7 @@
         .product-card:hover {
             transform: translateY(-8px) scale(1.02);
             box-shadow: var(--shadow-hover);
+            border-color: var(--primary-color);
         }
 
         .product-card:active {
@@ -189,11 +208,11 @@
             width: 100%;
             height: 160px;
             object-fit: cover;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, #6a54d4 100%);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 40px;
+            font-size: 48px;
             color: white;
             position: relative;
             overflow: hidden;
@@ -231,7 +250,7 @@
         }
 
         .product-name { 
-            font-size: 15px; 
+            font-size: 16px; 
             font-weight: 600; 
             margin-bottom: 8px; 
             display: -webkit-box;
@@ -242,15 +261,15 @@
         }
 
         .product-price { 
-            font-size: 18px; 
+            font-size: 20px; 
             font-weight: 700; 
             color: var(--primary-color);
-            margin-bottom: 8px;
+            margin-bottom: 12px;
         }
 
         .stock-indicator {
-            font-size: 12px;
-            padding: 6px 10px;
+            font-size: 13px;
+            padding: 6px 12px;
             border-radius: 20px;
             display: inline-block;
             font-weight: 600;
@@ -258,15 +277,15 @@
         }
 
         .stock-indicator.in-stock { 
-            background: rgba(0, 200, 83, 0.1); 
+            background: rgba(52, 199, 89, 0.15); 
             color: var(--success-color); 
-            border: 1px solid rgba(0, 200, 83, 0.2);
+            border: 1px solid rgba(52, 199, 89, 0.3);
         }
 
         .stock-indicator.out-of-stock { 
-            background: rgba(255, 59, 48, 0.1); 
+            background: rgba(255, 59, 48, 0.15); 
             color: var(--error-color); 
-            border: 1px solid rgba(255, 59, 48, 0.2);
+            border: 1px solid rgba(255, 59, 48, 0.3);
         }
 
         /* Cart Button */
@@ -274,13 +293,13 @@
             position: fixed;
             bottom: 24px;
             right: 24px;
-            width: 64px;
-            height: 64px;
+            width: 68px;
+            height: 68px;
             border-radius: 50%;
             background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
             color: white;
             border: none;
-            font-size: 24px;
+            font-size: 26px;
             box-shadow: var(--shadow-hover);
             display: none;
             align-items: center;
@@ -292,9 +311,9 @@
         }
 
         @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(51, 144, 236, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(51, 144, 236, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(51, 144, 236, 0); }
+            0% { box-shadow: 0 0 0 0 rgba(135, 116, 225, 0.7); }
+            70% { box-shadow: 0 0 0 12px rgba(135, 116, 225, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(135, 116, 225, 0); }
         }
 
         .cart-button:hover {
@@ -313,12 +332,13 @@
             background: var(--error-color);
             color: white;
             border-radius: 12px;
-            padding: 3px 8px;
-            font-size: 11px;
+            padding: 4px 8px;
+            font-size: 12px;
             font-weight: 700;
-            min-width: 20px;
+            min-width: 22px;
             text-align: center;
             animation: bounce 0.5s;
+            border: 2px solid var(--secondary-bg);
         }
 
         @keyframes bounce {
@@ -338,8 +358,8 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.6);
-            backdrop-filter: blur(8px);
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(12px);
             z-index: 2000;
             animation: fadeIn 0.3s ease;
         }
@@ -350,13 +370,14 @@
         }
 
         .modal-content {
-            background: var(--bg-color);
+            background: var(--secondary-bg);
             width: 100%;
             max-height: 90vh;
             border-radius: var(--border-radius) var(--border-radius) 0 0;
             overflow-y: auto;
             animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             transform: translateY(0);
+            border: 1px solid var(--border-color);
         }
 
         @keyframes slideUp {
@@ -366,9 +387,9 @@
 
         .modal-image { 
             width: 100%; 
-            height: 280px; 
+            height: 300px; 
             object-fit: cover; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, #6a54d4 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -397,7 +418,7 @@
         }
 
         .modal-description { 
-            font-size: 16px; 
+            font-size: 17px; 
             margin-bottom: 24px; 
             color: var(--text-secondary);
             line-height: 1.5;
@@ -410,7 +431,7 @@
             color: white;
             border: none;
             border-radius: var(--border-radius-sm);
-            font-size: 16px;
+            font-size: 17px;
             font-weight: 700;
             cursor: pointer;
             transition: var(--transition);
@@ -456,12 +477,12 @@
 
         .modal-close-btn {
             width: 100%;
-            padding: 14px;
+            padding: 16px;
             background: transparent;
             color: var(--primary-color);
             border: 2px solid var(--border-color);
             border-radius: var(--border-radius-sm);
-            font-size: 16px;
+            font-size: 17px;
             font-weight: 600;
             cursor: pointer;
             transition: var(--transition);
@@ -477,12 +498,13 @@
             display: flex;
             gap: 16px;
             padding: 16px;
-            background: var(--secondary-bg);
+            background: var(--bg-color);
             border-radius: var(--border-radius-sm);
             margin-bottom: 12px;
             align-items: center;
             transition: var(--transition);
             animation: slideIn 0.3s ease;
+            border: 1px solid var(--border-color);
         }
 
         @keyframes slideIn {
@@ -500,7 +522,7 @@
             height: 70px; 
             border-radius: var(--border-radius-sm); 
             object-fit: cover; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, #6a54d4 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -521,7 +543,7 @@
         }
 
         .cart-item-price { 
-            font-size: 15px; 
+            font-size: 16px; 
             color: var(--primary-color);
             font-weight: 600;
             margin-bottom: 10px; 
@@ -534,8 +556,8 @@
         }
 
         .cart-item-btn {
-            width: 32px;
-            height: 32px;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
             border: 2px solid var(--primary-color);
             background: transparent;
@@ -574,14 +596,14 @@
             padding: 24px;
             border-top: 2px solid var(--border-color);
             margin-top: 16px;
-            background: var(--secondary-bg);
+            background: var(--bg-color);
             border-radius: var(--border-radius);
         }
 
         .cart-total-row {
             display: flex;
             justify-content: space-between;
-            font-size: 20px;
+            font-size: 22px;
             font-weight: 700;
             margin-bottom: 20px;
             color: var(--text-color);
@@ -599,13 +621,13 @@
         .loader::after {
             content: '';
             display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid var(--border-color);
-            border-top: 2px solid var(--primary-color);
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border-color);
+            border-top: 3px solid var(--primary-color);
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin-left: 10px;
+            margin-left: 12px;
         }
 
         @keyframes spin {
@@ -614,8 +636,8 @@
         }
         
         .success-message {
-            background: rgba(0, 200, 83, 0.1);
-            border: 2px solid rgba(0, 200, 83, 0.2);
+            background: rgba(52, 199, 89, 0.15);
+            border: 2px solid rgba(52, 199, 89, 0.3);
             border-radius: var(--border-radius-sm);
             padding: 20px;
             margin: 16px;
@@ -626,8 +648,8 @@
         }
 
         .error-message {
-            background: rgba(255, 59, 48, 0.1);
-            border: 2px solid rgba(255, 59, 48, 0.2);
+            background: rgba(255, 59, 48, 0.15);
+            border: 2px solid rgba(255, 59, 48, 0.3);
             border-radius: var(--border-radius-sm);
             padding: 20px;
             margin: 16px;
@@ -644,20 +666,20 @@
             }
             
             .modal-image {
-                height: 240px;
+                height: 260px;
             }
             
             .cart-button {
                 bottom: 20px;
                 right: 20px;
-                width: 60px;
-                height: 60px;
+                width: 64px;
+                height: 64px;
             }
         }
 
         @media (max-width: 360px) {
             .header {
-                padding: 10px 12px;
+                padding: 12px;
             }
             
             .products-container {
@@ -673,7 +695,8 @@
 <body>
     <div class="header">
         <div class="search-box">
-            <input type="text" class="search-input" id="searchInput" placeholder="🔍 Поиск товаров...">
+            <input type="text" class="search-input" id="searchInput" placeholder="Поиск товаров...">
+            <div class="search-icon">🔍</div>
         </div>
         <div class="filters" id="filters">
             <button class="filter-btn active" data-category="all">Все товары</button>
@@ -734,53 +757,15 @@
         let currentProduct = null;
 
         const API_URL = 'https://shopsanya11-production.up.railway.app';
-            // Получаем данные пользователя из Telegram WebApp
-    const user = tg.initDataUnsafe?.user;
-    const user_id = user?.id;
-    const username = user?.username || 'не указан';
-    const first_name = user?.first_name || 'Пользователь';
-
-    console.log('👤 User data:', { user_id, username, first_name });
-
-    function checkout() {
-        if (cart.length === 0) {
-            showError('Корзина пуста');
-            return;
-        }
-
-        const orderData = {
-            type: 'order',
-            user_id: user_id, // Добавляем ID пользователя
-            username: username,
-            first_name: first_name,
-            items: cart.map(item => ({
-                id: item.id,
-                name: item.name,
-                price: item.price,
-                quantity: item.quantity
-            })),
-            total_price: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
-        };
-
-        console.log('📦 Отправка заказа:', orderData);
         
-        if (window.Telegram?.WebApp?.sendData) {
-            try {
-                tg.sendData(JSON.stringify(orderData));
-                
-                cart = [];
-                updateCartUI();
-                document.getElementById('cartModal').classList.remove('active');
-                
-                showSuccess('Заказ успешно оформлен! Администратор свяжется с вами в ближайшее время.');
-            } catch (error) {
-                console.error('Ошибка отправки заказа:', error);
-                showError('Ошибка отправки заказа. Попробуйте еще раз.');
-            }
-        } else {
-            showError('WebApp недоступен. Пожалуйста, обновите страницу.');
-        }
-    }
+        // Получаем данные пользователя из Telegram WebApp
+        const user = tg.initDataUnsafe?.user;
+        const user_id = user?.id;
+        const username = user?.username || 'не указан';
+        const first_name = user?.first_name || 'Пользователь';
+
+        console.log('👤 User data:', { user_id, username, first_name });
+
         // Utility functions
         function showError(message) {
             const errorDiv = document.createElement('div');
@@ -1019,6 +1004,9 @@
 
             const orderData = {
                 type: 'order',
+                user_id: user_id,
+                username: username,
+                first_name: first_name,
                 items: cart.map(item => ({
                     id: item.id,
                     name: item.name,
@@ -1034,7 +1022,6 @@
                 try {
                     tg.sendData(JSON.stringify(orderData));
                     
-                    // Clear cart and show success
                     cart = [];
                     updateCartUI();
                     document.getElementById('cartModal').classList.remove('active');

@@ -37,7 +37,7 @@ ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Инициализация бота без прокси (убрали проблемный прокси)
+# Инициализация бота
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
@@ -83,6 +83,7 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 username TEXT,
+                first_name TEXT,
                 items TEXT NOT NULL,
                 total_price REAL NOT NULL,
                 status TEXT DEFAULT 'new',
@@ -102,7 +103,8 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM products")
             cursor.execute("DELETE FROM categories")
-            cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('products', 'categories')")
+            cursor.execute("DELETE FROM orders")
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('products', 'categories', 'orders')")
             conn.commit()
             logger.info("🗑️ Все данные очищены")
         except Exception as e:
@@ -126,7 +128,6 @@ class Database:
                 else:
                     product['photo_url'] = None
                 
-                # Удаляем лишние поля
                 product.pop('category_name', None)
                 product.pop('photo_id', None)
             
@@ -321,19 +322,102 @@ class Database:
         finally:
             conn.close()
     
-    # Заказы
-    def create_order(self, user_id: int, username: str, items: str, total_price: float) -> int:
+    # Заказы - НОВЫЕ МЕТОДЫ
+    def create_order_with_user(self, user_id: int, username: str, first_name: str, items: List[dict], total_price: float) -> int:
+        """Создание заказа с полной информацией о пользователе"""
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO orders (user_id, username, items, total_price) VALUES (?, ?, ?, ?)",
-                (user_id, username, items, total_price))
+            
+            # Преобразуем items в JSON строку
+            items_json = json.dumps(items, ensure_ascii=False)
+            
+            cursor.execute(
+                """INSERT INTO orders (user_id, username, first_name, items, total_price, status) 
+                VALUES (?, ?, ?, ?, ?, 'new')""",
+                (user_id, username, first_name, items_json, total_price)
+            )
             order_id = cursor.lastrowid
             conn.commit()
+            
+            logger.info(f"📦 Заказ #{order_id} создан для пользователя {user_id}")
             return order_id
         except Exception as e:
             logger.error(f"❌ Ошибка создания заказа: {e}")
             raise
+        finally:
+            conn.close()
+    
+    def get_new_orders(self) -> List[dict]:
+        """Получение новых заказов"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, user_id, username, first_name, items, total_price, created_at 
+                FROM orders 
+                WHERE status = 'new' 
+                ORDER BY created_at DESC
+            """)
+            orders = [dict(row) for row in cursor.fetchall()]
+            return orders
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения заказов: {e}")
+            return []
+        finally:
+            conn.close()
+    
+    def get_all_orders(self) -> List[dict]:
+        """Получение всех заказов"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, user_id, username, first_name, items, total_price, status, created_at 
+                FROM orders 
+                ORDER BY created_at DESC
+            """)
+            orders = [dict(row) for row in cursor.fetchall()]
+            return orders
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения всех заказов: {e}")
+            return []
+        finally:
+            conn.close()
+    
+    def update_order_status(self, order_id: int, status: str) -> bool:
+        """Обновление статуса заказа"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE orders SET status = ? WHERE id = ?",
+                (status, order_id)
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"❌ Ошибка обновления заказа: {e}")
+            return False
+        finally:
+            conn.close()
+    
+    def get_user_orders(self, user_id: int) -> List[dict]:
+        """Получение заказов пользователя"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, items, total_price, status, created_at 
+                FROM orders 
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+            """, (user_id,))
+            orders = [dict(row) for row in cursor.fetchall()]
+            return orders
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения заказов пользователя: {e}")
+            return []
         finally:
             conn.close()
 
@@ -353,7 +437,10 @@ class AddProduct(StatesGroup):
 
 # ==================== КЛАВИАТУРЫ ====================
 def get_main_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
-    buttons = [[InlineKeyboardButton(text="🛒 Открыть магазин", web_app=WebAppInfo(url=WEBAPP_URL))]]
+    buttons = [
+        [InlineKeyboardButton(text="🛒 Открыть магазин", web_app=WebAppInfo(url=WEBAPP_URL))],
+        [InlineKeyboardButton(text="📦 Мои заказы", callback_data="my_orders")]
+    ]
     if is_admin:
         buttons.append([InlineKeyboardButton(text="⚙️ Админ-панель", callback_data="admin_panel")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -364,10 +451,19 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="➕ Добавить товар", callback_data="add_product")],
         [InlineKeyboardButton(text="📋 Управление категориями", callback_data="manage_categories")],
         [InlineKeyboardButton(text="📦 Управление товарами", callback_data="manage_products")],
+        [InlineKeyboardButton(text="🛒 Управление заказами", callback_data="manage_orders")],
         [InlineKeyboardButton(text="🗑️ ОЧИСТИТЬ ВСЕ", callback_data="clear_all_data")],
         [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_orders_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_orders")],
+        [InlineKeyboardButton(text="✅ Обработать все", callback_data="process_all_orders")],
+        [InlineKeyboardButton(text="📋 Все заказы", callback_data="all_orders")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")]
+    ])
 
 def get_category_type_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -430,6 +526,7 @@ async def show_admin_panel(callback: CallbackQuery, state: FSMContext):
     
     categories_count = len(db.get_all_categories())
     products_count = len(db.get_all_products())
+    new_orders_count = len(db.get_new_orders())
     
     try:
         await callback.message.edit_text(
@@ -438,6 +535,7 @@ async def show_admin_panel(callback: CallbackQuery, state: FSMContext):
 📊 <b>Статистика:</b>
 📦 Категорий: {categories_count}
 🛒 Товаров: {products_count}
+🆕 Новых заказов: {new_orders_count}
 
 Выберите действие:""",
             reply_markup=get_admin_keyboard(),
@@ -445,6 +543,195 @@ async def show_admin_panel(callback: CallbackQuery, state: FSMContext):
         )
     except TelegramBadRequest:
         pass
+    await callback.answer()
+
+# ==================== УПРАВЛЕНИЕ ЗАКАЗАМИ ====================
+@router.callback_query(F.data == "manage_orders")
+async def manage_orders(callback: CallbackQuery):
+    """Показать новые заказы"""
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    orders = db.get_new_orders()
+    
+    if not orders:
+        await callback.message.edit_text(
+            "📦 <b>Новых заказов нет</b>",
+            reply_markup=get_orders_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+    
+    text = "🛒 <b>НОВЫЕ ЗАКАЗЫ:</b>\n\n"
+    
+    for order in orders:
+        try:
+            items = json.loads(order['items'])
+            items_text = '\n'.join([
+                f"   ├ {item['name']} - {item['quantity']}шт. × {item['price']}₽"
+                for item in items
+            ])
+            
+            text += f"""📦 <b>Заказ #{order['id']}</b>
+👤 <b>Клиент:</b> {order['first_name']} (@{order['username']})
+🆔 <b>ID:</b> {order['user_id']}
+📅 <b>Время:</b> {order['created_at']}
+{items_text}
+💰 <b>ИТОГО: {order['total_price']}₽</b>
+
+"""
+        except Exception as e:
+            logger.error(f"❌ Ошибка обработки заказа #{order['id']}: {e}")
+            continue
+    
+    await callback.message.edit_text(text, reply_markup=get_orders_keyboard(), parse_mode="HTML")
+    await callback.answer()
+
+@router.callback_query(F.data == "refresh_orders")
+async def refresh_orders(callback: CallbackQuery):
+    """Обновить список заказов"""
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    orders = db.get_new_orders()
+    
+    if not orders:
+        await callback.message.edit_text(
+            "📦 <b>Новых заказов нет</b>",
+            reply_markup=get_orders_keyboard(),
+            parse_mode="HTML"
+        )
+    else:
+        text = "🛒 <b>НОВЫЕ ЗАКАЗЫ:</b>\n\n"
+        
+        for order in orders:
+            try:
+                items = json.loads(order['items'])
+                items_text = '\n'.join([
+                    f"   ├ {item['name']} - {item['quantity']}шт. × {item['price']}₽"
+                    for item in items
+                ])
+                
+                text += f"""📦 <b>Заказ #{order['id']}</b>
+👤 <b>Клиент:</b> {order['first_name']} (@{order['username']})
+🆔 <b>ID:</b> {order['user_id']}
+📅 <b>Время:</b> {order['created_at']}
+{items_text}
+💰 <b>ИТОГО: {order['total_price']}₽</b>
+
+"""
+            except Exception as e:
+                logger.error(f"❌ Ошибка обработки заказа #{order['id']}: {e}")
+                continue
+        
+        await callback.message.edit_text(text, reply_markup=get_orders_keyboard(), parse_mode="HTML")
+    
+    await callback.answer()
+
+@router.callback_query(F.data == "process_all_orders")
+async def process_all_orders(callback: CallbackQuery):
+    """Пометить все заказы как обработанные"""
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    orders = db.get_new_orders()
+    processed_count = 0
+    
+    for order in orders:
+        if db.update_order_status(order['id'], 'processed'):
+            processed_count += 1
+    
+    await callback.message.edit_text(
+        f"✅ <b>Обработано заказов: {processed_count}</b>",
+        reply_markup=get_orders_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "all_orders")
+async def show_all_orders(callback: CallbackQuery):
+    """Показать все заказы"""
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ У вас нет доступа!", show_alert=True)
+        return
+    
+    orders = db.get_all_orders()
+    
+    if not orders:
+        await callback.message.edit_text(
+            "📦 <b>Заказов нет</b>",
+            reply_markup=get_orders_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+    
+    text = "🛒 <b>ВСЕ ЗАКАЗЫ:</b>\n\n"
+    
+    for order in orders[:10]:  # Показываем первые 10 заказов
+        try:
+            items = json.loads(order['items'])
+            status_icon = "🆕" if order['status'] == 'new' else "✅"
+            
+            text += f"""{status_icon} <b>Заказ #{order['id']}</b>
+👤 {order['first_name']} | 💰 {order['total_price']}₽ | 📅 {order['created_at']}
+Статус: {order['status']}
+
+"""
+        except Exception as e:
+            logger.error(f"❌ Ошибка обработки заказа #{order['id']}: {e}")
+            continue
+    
+    if len(orders) > 10:
+        text += f"\n... и еще {len(orders) - 10} заказов"
+    
+    await callback.message.edit_text(text, reply_markup=get_orders_keyboard(), parse_mode="HTML")
+    await callback.answer()
+
+@router.callback_query(F.data == "my_orders")
+async def show_my_orders(callback: CallbackQuery):
+    """Показать заказы пользователя"""
+    user_id = callback.from_user.id
+    orders = db.get_user_orders(user_id)
+    
+    if not orders:
+        await callback.message.edit_text(
+            "📦 <b>У вас пока нет заказов</b>\n\nПерейдите в магазин чтобы сделать первый заказ!",
+            reply_markup=get_back_keyboard("main_menu"),
+            parse_mode="HTML"
+        )
+        return
+    
+    text = "🛒 <b>ВАШИ ЗАКАЗЫ:</b>\n\n"
+    
+    for order in orders:
+        try:
+            items = json.loads(order['items'])
+            items_text = '\n'.join([
+                f"   ├ {item['name']} - {item['quantity']}шт."
+                for item in items[:3]  # Показываем первые 3 товара
+            ])
+            
+            if len(items) > 3:
+                items_text += f"\n   └ ... и еще {len(items) - 3} товаров"
+            
+            status_icon = "🆕" if order['status'] == 'new' else "✅"
+            status_text = "новый" if order['status'] == 'new' else "обработан"
+            
+            text += f"""{status_icon} <b>Заказ #{order['id']}</b>
+{items_text}
+💰 <b>Сумма: {order['total_price']}₽</b>
+📅 <b>Дата:</b> {order['created_at']}
+📊 <b>Статус:</b> {status_text}
+
+"""
+        except Exception as e:
+            logger.error(f"❌ Ошибка обработки заказа #{order['id']}: {e}")
+            continue
+    
+    await callback.message.edit_text(text, reply_markup=get_back_keyboard("main_menu"), parse_mode="HTML")
     await callback.answer()
 
 # ==================== FSM ХЕНДЛЕРЫ ДЛЯ АДМИНКИ ====================
@@ -745,7 +1032,7 @@ async def clear_all_data(callback: CallbackQuery):
     ])
     
     await callback.message.edit_text(
-        "⚠️ <b>ВНИМАНИЕ!</b>\n\nВы уверены что хотите удалить ВСЕ данные (категории и товары)?\n\nЭто действие нельзя отменить!",
+        "⚠️ <b>ВНИМАНИЕ!</b>\n\nВы уверены что хотите удалить ВСЕ данные (категории, товары и заказы)?\n\nЭто действие нельзя отменить!",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
@@ -765,118 +1052,6 @@ async def confirm_clear(callback: CallbackQuery):
     )
     await callback.answer()
 
-@router.message(F.web_app_data)
-async def handle_web_app_data(message: Message):
-    """Обработчик заказов из WebApp - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
-    logger.info(f"🟢 WebApp данные получены от пользователя {message.from_user.id}")
-    
-    try:
-        # Получаем данные из WebApp
-        data = json.loads(message.web_app_data.data)
-        logger.info(f"📦 Данные заказа: {data}")
-        
-        if data.get('type') != 'order':
-            logger.warning(f"⚠️ Unknown data type: {data.get('type')}")
-            await message.answer("❌ Неизвестный тип данных")
-            return
-        
-        items = data.get('items', [])
-        total_price = data.get('total_price', 0)
-        
-        logger.info(f"📦 Товаров: {len(items)}, Общая сумма: {total_price}")
-        
-        if not items:
-            await message.answer("❌ Пустой заказ")
-            return
-        
-        # ПРИОРИТЕТ 1: Используем данные из WebApp, если они есть
-        user_id_from_webapp = data.get('user_id')
-        username_from_webapp = data.get('username', 'не указан')
-        first_name_from_webapp = data.get('first_name', 'Пользователь')
-        
-        # ПРИОРИТЕТ 2: Если данных из WebApp нет, используем данные из сообщения
-        if user_id_from_webapp:
-            user_id = user_id_from_webapp
-            username = username_from_webapp
-            first_name = first_name_from_webapp
-            logger.info(f"👤 Используем данные из WebApp: {user_id} - {first_name}")
-        else:
-            user_id = message.from_user.id
-            username = message.from_user.username or message.from_user.first_name
-            first_name = message.from_user.first_name
-            logger.info(f"👤 Используем данные из сообщения: {user_id} - {first_name}")
-        
-        # Создаем заказ в БД
-        order_id = db.create_order(
-            user_id=user_id,
-            username=username,
-            items=json.dumps(items, ensure_ascii=False),
-            total_price=total_price
-        )
-        
-        logger.info(f"📦 Заказ #{order_id} создан в базе данных")
-        
-        # Формируем детали заказа
-        order_details = '\n'.join([
-            f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item['price'] * item['quantity']}₽"
-            for item in items
-        ])
-        
-        # Формируем сообщение для группы
-        order_text = f"""🛒 <b>НОВЫЙ ЗАКАЗ #{order_id}</b>
-
-👤 <b>Клиент:</b>
-├ Имя: {first_name}
-├ ID: {user_id}
-└ Username: @{username}
-
-📦 <b>Заказ:</b>
-{order_details}
-
-💰 <b>ИТОГО: {total_price}₽</b>
-
-⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
-
-        # Отправляем в группу
-        logger.info(f"🔄 Отправляю заказ #{order_id} в группу {ORDER_CHANNEL_ID}")
-        
-        try:
-            if ORDER_CHANNEL_ID:
-                await bot.send_message(
-                    chat_id=ORDER_CHANNEL_ID, 
-                    text=order_text, 
-                    parse_mode="HTML"
-                )
-                logger.info(f"✅ Заказ #{order_id} отправлен в группу!")
-            else:
-                logger.error("❌ ORDER_CHANNEL_ID не указан!")
-                
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки заказа в группу: {e}")
-            # Сохраняем заказ в лог файл как запасной вариант
-            with open('failed_orders.log', 'a', encoding='utf-8') as f:
-                f.write(f"\n{datetime.now()} - Order #{order_id} - {order_text}\n")
-            
-        # Уведомляем пользователя об успехе
-        success_text = f"""✅ <b>Заказ #{order_id} успешно оформлен!</b>
-
-💰 Сумма: <b>{total_price}₽</b>
-📦 Товаров: <b>{len(items)}</b>
-
-📞 С вами свяжутся в течение 5-15 минут!
-
-🆔 Номер заказа: <code>{order_id}</code>"""
-
-        await message.answer(success_text, parse_mode="HTML")
-        logger.info(f"🎉 Заказ #{order_id} полностью обработан")
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"❌ Ошибка декодирования JSON: {e}")
-        await message.answer("❌ Ошибка формата данных заказа")
-    except Exception as e:
-        logger.error(f"❌ Общая ошибка обработки заказа: {e}")
-        await message.answer("❌ Ошибка обработки заказа")
-
 # ==================== КОМАНДЫ ====================
 @router.message(Command("getid"))
 async def cmd_get_id(message: Message):
@@ -889,6 +1064,34 @@ async def cmd_get_id(message: Message):
 <b>Используйте этот ID в .env файле!</b>""",
         parse_mode="HTML"
     )
+
+@router.message(Command("orders"))
+async def cmd_orders(message: Message):
+    """Команда для просмотра заказов"""
+    if message.from_user.id == ADMIN_ID:
+        # Админ видит все заказы
+        orders = db.get_new_orders()
+        if not orders:
+            await message.answer("📦 <b>Новых заказов нет</b>", parse_mode="HTML")
+        else:
+            text = "🛒 <b>НОВЫЕ ЗАКАЗЫ:</b>\n\n"
+            for order in orders:
+                items = json.loads(order['items'])
+                items_text = '\n'.join([f"• {item['name']} - {item['quantity']}шт." for item in items[:3]])
+                text += f"📦 <b>Заказ #{order['id']}</b>\n👤 {order['first_name']}\n{items_text}\n💰 {order['total_price']}₽\n\n"
+            await message.answer(text, parse_mode="HTML")
+    else:
+        # Пользователь видит свои заказы
+        orders = db.get_user_orders(message.from_user.id)
+        if not orders:
+            await message.answer("📦 <b>У вас пока нет заказов</b>", parse_mode="HTML")
+        else:
+            text = "🛒 <b>ВАШИ ЗАКАЗЫ:</b>\n\n"
+            for order in orders:
+                status_icon = "🆕" if order['status'] == 'new' else "✅"
+                text += f"{status_icon} <b>Заказ #{order['id']}</b> - {order['total_price']}₽ ({order['status']})\n"
+            await message.answer(text, parse_mode="HTML")
+
 @router.message(Command("testchannel"))
 async def test_channel_command(message: Message):
     """Тест отправки в канал"""
@@ -917,37 +1120,7 @@ async def test_channel_command(message: Message):
         error_msg = f"❌ Ошибка отправки в канал: {e}"
         await message.answer(error_msg)
         logger.error(error_msg)
-@router.message(Command("testorder"))
-async def cmd_test_order(message: Message):
-    """Тестовая команда для проверки отправки заказов"""
-    if message.from_user.id != ADMIN_ID:
-        return
-    
-    test_order_text = f"""🛒 <b>ТЕСТОВЫЙ ЗАКАЗ #999</b>
 
-👤 <b>Клиент:</b>
-├ Имя: Тестовый пользователь
-├ ID: 123456789
-└ @testuser
-
-📦 <b>Заказ:</b>
-• Тестовый товар - 2шт. × 500₽ = 1000₽
-
-💰 <b>ИТОГО: 1000₽</b>
-
-⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
-    
-    try:
-        await bot.send_message(
-            chat_id=ADMIN_ID,
-            text=test_order_text,
-            parse_mode="HTML"
-        )
-        await message.answer("✅ Тестовое сообщение отправлено АДМИНУ в ЛС")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка отправки: {e}")
-
-# ==================== API СЕРВЕР ====================
 # ==================== API СЕРВЕР ====================
 async def get_products_api(request):
     try:
@@ -965,7 +1138,7 @@ async def get_products_api(request):
         
         response = web.json_response(products)
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS, POST'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
         return response
         
@@ -980,7 +1153,7 @@ async def get_categories_api(request):
         categories = db.get_all_categories()
         response = web.json_response(categories)
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS, POST'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
         return response
     except Exception as e:
@@ -989,10 +1162,75 @@ async def get_categories_api(request):
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response
 
+async def create_order_api(request):
+    """API для создания заказа из WebApp"""
+    try:
+        data = await request.json()
+        logger.info(f"📦 API Order received from user {data.get('user_id')}")
+        
+        # Создаем заказ в БД
+        order_id = db.create_order_with_user(
+            user_id=data.get('user_id'),
+            username=data.get('username', 'не указан'),
+            first_name=data.get('first_name', 'Пользователь'),
+            items=data.get('items', []),
+            total_price=data.get('total_price', 0)
+        )
+        
+        # Уведомляем администратора
+        if ADMIN_ID:
+            items_text = '\n'.join([
+                f"• {item['name']} - {item['quantity']}шт. × {item['price']}₽ = {item['price'] * item['quantity']}₽"
+                for item in data.get('items', [])
+            ])
+            
+            order_text = f"""🛒 <b>НОВЫЙ ЗАКАЗ #{order_id}</b>
+
+👤 <b>Клиент:</b>
+├ Имя: {data.get('first_name', 'Пользователь')}
+├ ID: {data.get('user_id', 'не указан')}
+└ @{data.get('username', 'не указан')}
+
+📦 <b>Заказ:</b>
+{items_text}
+
+💰 <b>ИТОГО: {data.get('total_price', 0)}₽</b>
+
+⏰ <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"""
+            
+            await bot.send_message(
+                chat_id=ADMIN_ID,
+                text=order_text,
+                parse_mode="HTML"
+            )
+            
+            # Также отправляем в группу, если указана
+            if ORDER_CHANNEL_ID:
+                await bot.send_message(
+                    chat_id=ORDER_CHANNEL_ID,
+                    text=order_text,
+                    parse_mode="HTML"
+                )
+        
+        logger.info(f"✅ Заказ #{order_id} создан и уведомления отправлены")
+        
+        return web.json_response({
+            "status": "success", 
+            "order_id": order_id,
+            "message": "Заказ успешно создан"
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ API Order error: {e}")
+        return web.json_response({
+            "status": "error",
+            "message": "Ошибка создания заказа"
+        }, status=500)
+
 async def options_handler(request):
     response = web.Response()
     response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS, POST'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
     return response
 
@@ -1007,11 +1245,13 @@ async def start_api_server():
     # Добавляем маршруты
     app.router.add_get('/api/products', get_products_api)
     app.router.add_get('/api/categories', get_categories_api)
+    app.router.add_post('/api/create_order', create_order_api)
     app.router.add_get('/health', health_check)
     
     # Добавляем OPTIONS handlers для CORS
     app.router.add_route('OPTIONS', '/api/products', options_handler)
     app.router.add_route('OPTIONS', '/api/categories', options_handler)
+    app.router.add_route('OPTIONS', '/api/create_order', options_handler)
     app.router.add_route('OPTIONS', '/health', options_handler)
     
     runner = web.AppRunner(app)
