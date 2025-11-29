@@ -14,7 +14,30 @@ import sqlite3
 from typing import List, Optional
 from aiohttp import web
 import aiohttp_cors
+import requests
+# В начале файла после импортов
+from initial_data import load_initial_data
 
+# В класс Database в метод __init__ добавь:
+def __init__(self, db_file: str = "shop.db"):
+    self.db_file = db_file
+    self.init_db()
+    # Проверяем и загружаем данные
+    self.check_and_load_data()
+
+def check_and_load_data(self):
+    """Проверяем и загружаем данные если БД пустая"""
+    conn = self.get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COUNT(*) FROM categories")
+    if cursor.fetchone()[0] == 0:
+        logger.info("🔄 БД пустая, загружаем начальные данные...")
+        load_initial_data(self.db_file)
+    else:
+        logger.info("✅ В БД уже есть данные")
+    
+    conn.close()
 # Загрузка переменных окружения
 def load_env():
     if os.path.exists('.env'):
@@ -30,7 +53,7 @@ load_env()
 # Настройки
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
-WEBAPP_URL = os.getenv("WEBAPP_URL", "shopsanya11-production.up.railway.app")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://danil228cmd.github.io/shopsanya11/")
 ORDER_CHANNEL_ID = os.getenv("ORDER_CHANNEL_ID")
 
 # Настройка логирования
@@ -48,6 +71,7 @@ class Database:
     def __init__(self, db_file: str = "shop.db"):
         self.db_file = db_file
         self.init_db()
+        self.load_initial_data()  # Загружаем начальные данные
     
     def get_connection(self):
         conn = sqlite3.connect(self.db_file)
@@ -97,6 +121,59 @@ class Database:
         finally:
             conn.close()
     
+    def load_initial_data(self):
+        """Загружаем начальные данные в БД"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Проверяем, есть ли уже данные
+            cursor.execute("SELECT COUNT(*) FROM categories")
+            categories_count = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM products")
+            products_count = cursor.fetchone()[0]
+            
+            if categories_count == 0 and products_count == 0:
+                logger.info("🔄 Загружаем начальные данные...")
+                
+                # Добавляем категории
+                categories = [
+                    ("Обувь", None),
+                    ("Nike", 1),
+                    ("Одежда", None),
+                    ("Аксессуары", None)
+                ]
+                
+                for name, parent_id in categories:
+                    cursor.execute("INSERT INTO categories (name, parent_id) VALUES (?, ?)", (name, parent_id))
+                
+                # Добавляем товары
+                products = [
+                    (2, "Nike Skeleton Purple", "Хорошая модная обувь", 9999.0, None),
+                    (2, "Сперма единорога", "Хорошая вкусная сперма", 19999.0, None),
+                    (2, "Сучка", "ебаная", 2414.0, None),
+                    (3, "Футболка", "Крутая футболка", 1500.0, None),
+                    (4, "Рюкзак", "Стильный рюкзак", 3000.0, None)
+                ]
+                
+                for category_id, name, description, price, photo_id in products:
+                    cursor.execute(
+                        "INSERT INTO products (category_id, name, description, price, photo_id) VALUES (?, ?, ?, ?, ?)",
+                        (category_id, name, description, price, photo_id)
+                    )
+                
+                conn.commit()
+                logger.info("✅ Начальные данные загружены")
+            else:
+                logger.info(f"✅ В БД уже есть данные: {categories_count} категорий, {products_count} товаров")
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки начальных данных: {e}")
+        finally:
+            conn.close()
+    
+    # ... остальные методы БД остаются такими же как в предыдущей версии ...
     def clear_all_data(self):
         try:
             conn = self.get_connection()
@@ -107,6 +184,8 @@ class Database:
             cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('products', 'categories', 'orders')")
             conn.commit()
             logger.info("🗑️ Все данные очищены")
+            # После очистки загружаем данные заново
+            self.load_initial_data()
         except Exception as e:
             logger.error(f"❌ Ошибка очистки данных: {e}")
         finally:
@@ -322,7 +401,7 @@ class Database:
         finally:
             conn.close()
     
-    # Заказы - НОВЫЕ МЕТОДЫ
+    # Заказы
     def create_order_with_user(self, user_id: int, username: str, first_name: str, items: List[dict], total_price: float) -> int:
         """Создание заказа с полной информацией о пользователе"""
         try:
@@ -1064,7 +1143,19 @@ async def cmd_get_id(message: Message):
 <b>Используйте этот ID в .env файле!</b>""",
         parse_mode="HTML"
     )
-
+@router.message(Command("loaddata"))
+async def cmd_load_data(message: Message):
+    """Принудительная загрузка тестовых данных"""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("❌ У вас нет доступа!")
+        return
+    
+    try:
+        # Очищаем и загружаем данные заново
+        db.clear_all_data()
+        await message.answer("✅ Тестовые данные загружены!\n\nТеперь в магазине должны появиться товары.")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка загрузки данных: {e}")
 @router.message(Command("orders"))
 async def cmd_orders(message: Message):
     """Команда для просмотра заказов"""
